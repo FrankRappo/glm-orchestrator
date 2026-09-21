@@ -1,0 +1,25 @@
+# Runtime data
+/tasks/*
+/logs/*
+/worktrees/*
+/artifacts/*
+/limits/*
+/smoke-*/
+*.previous-*
+
+# Keep empty runtime roots when present
+!/tasks/.gitkeep
+!/logs/.gitkeep
+!/worktrees/.gitkeep
+!/artifacts/.gitkeep
+
+# Python/test artifacts
+__pycache__/
+*.py[cod]
+
+# Local secrets and environment
+.env
+.env.*
+*.pem
+*.key
+credentials.json
