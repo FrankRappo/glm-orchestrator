@@ -63,12 +63,19 @@ task_file(){
 }
 
 report_file(){
-  local task="$1" exact="$REPORT_DIR/report_$task.md" tf declared prefix alias
+  local task="$1" exact="$REPORT_DIR/report_$task.md" tf declared prefix alias candidate
   [[ -f "$exact" ]] && { printf '%s\n' "$exact"; return; }
   tf="$(task_file "$task")"
-  declared="$(grep -aoE 'reports/report_[A-Za-z0-9_.-]+\.md' "$tf" 2>/dev/null | head -1 || true)"
-  [[ -n "$declared" ]] && { printf '%s\n' "$PROJECT_DIR/$declared"; return; }
   prefix="${task%%_*}"
+  declared=""
+  while IFS= read -r candidate; do
+    case "$candidate" in
+      "reports/report_$task.md"|"reports/report_${task}_"*.md|\
+      "reports/report_$prefix.md"|"reports/report_${prefix}_"*.md)
+        declared="$candidate"; break ;;
+    esac
+  done < <(grep -aoE 'reports/report_[A-Za-z0-9_.-]+\.md' "$tf" 2>/dev/null || true)
+  [[ -n "$declared" ]] && { printf '%s\n' "$PROJECT_DIR/$declared"; return; }
   alias="$(find "$REPORT_DIR" -maxdepth 1 -type f \( -name "report_$task*.md" -o -name "report_$prefix*.md" \) | sort | head -1)"
   printf '%s\n' "${alias:-$exact}"
 }

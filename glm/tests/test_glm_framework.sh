@@ -58,6 +58,18 @@ Resource-Lock: none
 Write `reports/report_T01.md` as the required report.
 EOF
 
+# A prerequisite report mentioned first must not be mistaken for this task's report.
+cat > "$project/tasks/T02_depends_on_T01.md" <<'EOF'
+# T02 regression fixture
+Complexity: low
+Model: auto
+Mode: build
+Resource-Lock: none
+
+Read `reports/report_T01.md` before starting.
+Write `reports/report_T02.md` as the required report.
+EOF
+
 metadata="$(python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" "$project/tasks/T01_low.md")"
 IFS=$'\t' read -r complexity provider model mode resource no_respawn max_respawn max_runtime <<< "$metadata"
 [[ "$complexity" == low ]]
@@ -81,6 +93,7 @@ timeout 35s env PROJECT_DIR="$project" IDLE_EXIT=1 MAX_PARALLEL=1 POLL=1 \
   bash "$ROOT/glm_orchestrator.template.sh"
 
 grep -q '^STATUS: SUCCESS$' "$project/reports/report_T01.md"
+grep -q '^STATUS: SUCCESS$' "$project/reports/report_T02.md"
 grep -q 'model=GLM-5.3-Flash' "$project/reports/report_T01.md"
 [[ -f "$project/reports/ALL_DONE" ]]
 grep -q 'ALL DONE' "$project/logs/glm_orchestrator.log"
