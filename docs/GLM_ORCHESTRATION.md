@@ -119,6 +119,19 @@ bash /work/glm/common/orchestrate.template.sh limits --json
 bash /work/glm/common/orchestrate.template.sh usage --project /work/myproject
 ```
 
+Human `limits` output includes used and remaining percentages plus the raw
+remaining/limit count; `limits --json` adds `remaining_percent` to each bucket.
+The five-hour and weekly Coding Plan entries are shared credit windows, not
+separate per-model allowances. A model-specific Flash trial bucket shown from
+desktop logs may be stale and is not automatically selected by the default
+`account:zai-individual-coding-plan` provider. GLM-5.2 has no separate bucket
+in the current monitor; do not change model routing on that assumption alone.
+
+The default efficiency guidance in controller/worker prompts avoids redundant
+context replay and full-suite reruns, while retaining every acceptance gate.
+`Complexity: low` with `Model: auto` still routes mechanical work to Flash;
+complex design, integration, and critical verification remain on GLM-5.3.
+
 `quota-policy=warn` allows work when the snapshot is unknown or stale but still
 defers a model whose known buckets have reached the reserve. `enforce` also
 blocks unknown/stale snapshots. The default reserve is 15 percent.

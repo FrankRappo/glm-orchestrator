@@ -72,6 +72,16 @@ def percent(used: float, limit: float) -> float:
     return round((used / limit * 100.0), 2) if limit > 0 else 0.0
 
 
+def remaining_percent(bucket: dict[str, Any]) -> float | None:
+    limit = float(bucket.get("limit") or 0)
+    if limit <= 0:
+        return None
+    remaining = bucket.get("remaining")
+    if remaining is None:
+        remaining = limit - float(bucket.get("used") or 0)
+    return round(max(0.0, min(100.0, float(remaining) / limit * 100.0)), 2)
+
+
 def newest_files(patterns: Iterable[str], limit: int = 40) -> list[Path]:
     candidates: dict[str, Path] = {}
     for pattern in patterns:
@@ -393,13 +403,18 @@ def human(snapshot: dict[str, Any]) -> str:
     for bucket in snapshot["buckets"]:
         reset = bucket.get("resets_at")
         reset_text = dt.datetime.fromtimestamp(reset, tz=dt.timezone.utc).isoformat() if isinstance(reset, (int, float)) else "unknown"
+        remaining_pct = bucket.get("remaining_percent")
+        if remaining_pct is None:
+            remaining_pct = remaining_percent(bucket)
+        remaining_text = f"{remaining_pct:6.2f}%" if remaining_pct is not None else f"{'n/a':>6}"
         lines.append(
             "  {provider:<6} {name:<20} {window:<10} used={used_percent:>6.2f}% "
-            "remaining={remaining:g}/{limit:g} reset={reset} status={status}".format(
+            "remaining_pct={remaining_pct} remaining={remaining:g}/{limit:g} reset={reset} status={status}".format(
                 provider=bucket.get("provider", "?"),
                 name=str(bucket.get("name") or "?")[:20],
                 window=bucket.get("window", "?"),
                 used_percent=float(bucket.get("used_percent") or 0),
+                remaining_pct=remaining_text,
                 remaining=float(bucket.get("remaining") or 0),
                 limit=float(bucket.get("limit") or 0),
                 reset=reset_text,
@@ -453,6 +468,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.provider in ("all", "codex"):
         codex_paths = newest_files(default_codex_patterns(args.codex_home))
         buckets.extend(parse_codex(codex_paths))
+
+    for bucket in buckets:
+        bucket["remaining_percent"] = remaining_percent(bucket)
 
     snapshot: dict[str, Any] = {
         "schema_version": 1,

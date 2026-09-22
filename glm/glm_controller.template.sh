@@ -50,6 +50,13 @@ acceptance gates, exact verification commands, and a unique required report path
 task. Prefer small tasks with non-overlapping file ownership. Do not implement the product
 changes in this planning turn.
 
+Avoid unnecessary context replay: use the goal's supplied evidence and inspect only relevant
+paths, group coherent work rather than creating redundant tiny tasks, and keep each task file
+concise and self-contained without copying large documents or logs. Mark bounded mechanical
+tasks `Complexity: low` so the existing auto policy uses Flash; keep complex design, integration,
+and critical verification on the capable model. Require targeted checks per task and one final
+broad validation, not repeated full suites without a changed failure hypothesis.
+
 Write a controller summary to `$controller_report`. Its final line must be
 `STATUS: SUCCESS` only if at least one valid task file was created; otherwise use BLOCKED.
 EOF

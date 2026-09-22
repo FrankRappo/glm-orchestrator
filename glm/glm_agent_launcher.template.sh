@@ -44,6 +44,14 @@ STATUS: PARTIAL
 
 Do not claim SUCCESS without verification evidence.
 
+Efficiency without quality loss: Prefer targeted file reads and bounded searches
+over repeated whole-repository scans. Reuse evidence already provided in the
+task. Run focused checks while editing and required broader validation once at
+the end; repeat an unchanged check only to investigate a specific failure.
+Summarize evidence with commands, results, and relevant excerpts rather than
+pasting entire logs. Never skip acceptance gates or necessary diagnostics to
+save tokens.
+
 --- TASK BELOW ---
 PREAMBLE
   cat "$TASK_FILE"

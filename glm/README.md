@@ -24,6 +24,7 @@ Use the common entrypoint rather than calling these scripts directly:
 ```bash
 bash /work/glm/common/orchestrate.template.sh doctor --live
 bash /work/glm/common/orchestrate.template.sh limits
+bash /work/glm/common/orchestrate.template.sh limits --json
 bash /work/glm/common/orchestrate.template.sh usage --project /work/myproject
 ```
 
@@ -54,6 +55,13 @@ connected personal Lite/Pro/Max plan. The orchestrator never reads or copies the
 credential file into task prompts or logs. The quota helper decrypts credentials
 only in memory to query the official quota endpoints and emits normalized usage
 without secrets.
+
+`orchestrate limits` shows both `used` and `remaining_pct` for every quota bucket,
+including the shared five-hour and weekly Coding Plan pools, alongside the raw
+remaining/limit values. `limits --json` includes `remaining_percent` (or `null`
+when the limit is zero). Remaining percent is computed from the provider's
+remaining amount, so it can differ slightly from `100 - used_percent` when the
+provider rounds its used-percent figure.
 
 ## GLM controls the run
 
@@ -124,6 +132,14 @@ strategy.
 
 `GLM-5.2` and `GLM-5-Turbo` are accepted as explicit per-task overrides. Auto
 routing intentionally stays on the currently verified 5.3 family.
+
+The planner and workers also default to token-conscious execution: targeted
+file reads, concise evidence, focused tests during edits, and required broad
+validation at the end. This does not relax acceptance or verification. Low
+complexity tasks already route to Flash; medium/high/critical stay on GLM-5.3
+to protect quality. Selecting Flash or GLM-5.2 with the default Coding Plan
+provider does **not** prove a separate free allowance is being used; check the
+actual provider and quota snapshot before claiming savings.
 
 ## Runtime status
 

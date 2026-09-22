@@ -95,6 +95,8 @@ timeout 35s env PROJECT_DIR="$project" IDLE_EXIT=1 MAX_PARALLEL=1 POLL=1 \
 grep -q '^STATUS: SUCCESS$' "$project/reports/report_T01.md"
 grep -q '^STATUS: SUCCESS$' "$project/reports/report_T02.md"
 grep -q 'model=GLM-5.3-Flash' "$project/reports/report_T01.md"
+grep -q 'Prefer targeted file reads' "$project/state/glm/T01_low.prompt.md"
+grep -q 'Never skip acceptance gates' "$project/state/glm/T01_low.prompt.md"
 [[ -f "$project/reports/ALL_DONE" ]]
 grep -q 'ALL DONE' "$project/logs/glm_orchestrator.log"
 grep -q '"total_tokens":110' "$project/logs/glm_usage.jsonl"
@@ -143,6 +145,7 @@ if tmux has-session -t "=$main_session3" 2>/dev/null; then
   exit 1
 fi
 [[ -f "$project3/tasks/T01_generated.md" ]]
+grep -q 'Avoid unnecessary context replay' "$project3/state/glm/CONTROLLER_PLAN.md"
 grep -q '^STATUS: SUCCESS$' "$project3/orch/controller_report.md"
 grep -q '^STATUS: SUCCESS$' "$project3/reports/report_T01.md"
 [[ -f "$project3/reports/ALL_DONE" ]]
