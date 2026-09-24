@@ -18,9 +18,11 @@ GitHub-репозиторий: `https://github.com/FrankRappo/glm-orchestrator`.
 - Команда в WSL: `glm`.
 - Native-обёртка: `/usr/local/bin/glm-linux`.
 - Windows fallback: `/usr/local/bin/glm-win`.
-- Ссылка в `PATH`: `/usr/local/bin/glm` → `bin/glm` (чат без аргументов,
-  остальные команды передаются штатному `glm-linux`).
-- Runtime GLM: Linux Electron/Node 24.14.0 из официального ZCode 3.14.1.
+- Ссылка в `PATH`: `/usr/local/bin/glm` → `bin/glm` (полноэкранный TUI без
+  аргументов, текстовый чат через `glm chat`, остальные команды через `glm-linux`).
+- Runtime headless GLM: Linux Electron/Node 24.14.0 из официального ZCode 3.14.1.
+- Runtime TUI: собранный CLI из `/work/zcode-official-source` через обычный
+  `/usr/bin/node` 22.23.1. Для TUI нужен доступный интерактивный терминал.
 - Терминальный мультиплексор: tmux 3.4.
 
 Проверенные базовые команды:
@@ -78,15 +80,16 @@ curl -4 https://api.ipify.org
 ## Основные команды
 
 Для интерактивного разговора без очереди задач см.
-[`INTERACTIVE_START.txt`](INTERACTIVE_START.txt). В текущей установке
-`glm tui` не работает из-за отсутствующего `@zcode/tui`, поэтому доступен
-`bin/glm-chat` — многоходовый терминальный диалог через headless GLM.
+[`INTERACTIVE_START.txt`](INTERACTIVE_START.txt). Установленный CLI не содержит
+`@zcode/tui`; `glm` запускает TUI из собранных исходников. Текстовый чат
+`glm chat` остаётся доступен через headless GLM.
 Для короткой команды из любого каталога ссылка должна указывать на
 диспетчер `bin/glm`:
 
 ```bash
 sudo ln -sfn /work/glm/bin/glm /usr/local/bin/glm
 cd /work/my-project && glm
+glm tui --cwd /work/my-project
 glm chat --project /work/my-project
 # Полный доступ к инструментам без подтверждений — только явно:
 glm chat --project /work/my-project --mode yolo
@@ -248,13 +251,13 @@ CLI, файлы, git и проверяемые результаты.
 | `glm --version` | работает |
 | `glm doctor --json` | работает |
 | запуск команды внутри tmux | работает |
-| интерактивный `glm tui` | в текущей установке отсутствует `@zcode/tui`; используйте `bin/glm-chat` |
+| интерактивный `glm` / `glm tui` | собранный CLI открыл TUI и ответил через GLM-5.3; нужен `/work/zcode-official-source` и обычный Node |
 | headless model prompt | авторизован, `orchestrate doctor --live` проходит |
 | GLM-5.3 / Flash / 5.2 / 5-Turbo | live-проверка проходит |
 | 5h / weekly / MCP quota | читаются из authenticated API |
 | token ledger | работает через `orchestrate usage` |
 
-TUI оркестратору не требуется: рабочий путь использует штатный headless
-`--prompt`. Тот же headless-путь использует `bin/glm-chat` для диалога.
+Оркестратор использует штатный headless `--prompt`. Тот же путь использует
+`bin/glm-chat` для текстового диалога.
 Нельзя запускать реальную задачу, пока `orchestrate doctor --live`
 не завершится успешно.

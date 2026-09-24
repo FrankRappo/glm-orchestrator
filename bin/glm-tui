@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# Run the built ZCode TUI with standalone Node: Electron rejects OpenTUI's
+# external ArrayBuffer, so its embedded Node runtime cannot render this TUI.
+set -euo pipefail
+
+NODE="${GLM_TUI_NODE:-/usr/bin/node}"
+CLI="${GLM_TUI_CLI:-/work/zcode-official-source/apps/zcode-cli/packages/cli/dist/zcode.cjs}"
+PROVIDER="${ZCODE_LINUX_BUILTIN_PROVIDER:-/opt/ZCode/resources/config/provider/zcode-builtin.json}"
+
+[[ -t 0 && -t 1 ]] || { echo "glm-tui: an interactive terminal is required" >&2; exit 2; }
+[[ -x "$NODE" ]] || { echo "glm-tui: missing standalone Node: $NODE" >&2; exit 127; }
+[[ -r "$CLI" ]] || { echo "glm-tui: missing built ZCode CLI: $CLI; use glm chat" >&2; exit 127; }
+[[ -r "$PROVIDER" ]] || { echo "glm-tui: missing provider config: $PROVIDER" >&2; exit 127; }
+
+export TERM="${TERM:-xterm-256color}"
+export ZCODE_BUILTIN_PROVIDER_CONFIG_FILE="$PROVIDER"
+unset ELECTRON_RUN_AS_NODE
+
+if ((EUID == 0)) && [[ "${GLM_LINUX_KEEP_ROOT:-0}" != 1 ]]; then
+  run_as_user="${GLM_LINUX_USER:-${SUDO_USER:-}}"
+  if [[ -z "$run_as_user" || "$run_as_user" == root ]]; then
+    run_as_user="$(getent passwd 1000 | cut -d: -f1)"
+  fi
+  [[ -n "$run_as_user" && "$run_as_user" != root ]] || {
+    echo "glm-tui: set GLM_LINUX_USER to a regular Linux user" >&2
+    exit 2
+  }
+  run_as_home="${GLM_LINUX_HOME:-$(getent passwd "$run_as_user" | cut -d: -f6)}"
+  [[ -n "$run_as_home" ]] || { echo "glm-tui: cannot determine home for $run_as_user" >&2; exit 2; }
+  if ! runuser -u "$run_as_user" -- test -x "$PWD" 2>/dev/null; then
+    echo "glm-tui: $PWD is not accessible to $run_as_user; using /work" >&2
+    cd /work
+  fi
+  exec runuser -u "$run_as_user" -- env HOME="$run_as_home" "$NODE" "$CLI" "$@"
+fi
+
+exec "$NODE" "$CLI" "$@"

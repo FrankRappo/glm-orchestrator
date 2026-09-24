@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# Keep the native ZCode CLI for subcommands; use the chat fallback with no args.
+# Open the full-screen TUI by default; keep chat and native CLI subcommands.
 set -euo pipefail
 
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 CHAT="${GLM_CHAT_ENTRY:-$ROOT/bin/glm-chat}"
+TUI="${GLM_TUI_ENTRY:-$ROOT/bin/glm-tui}"
 NATIVE="${GLM_NATIVE_ENTRY:-$ROOT/bin/glm-linux}"
 
-if (($# == 0)) || [[ "$1" == chat ]]; then
+if (($# == 0)) || [[ "$1" == tui ]]; then
   if (($#)); then shift; fi
+  exec "$TUI" "$@"
+fi
+
+if [[ "$1" == chat ]]; then
+  shift
   # The native GLM wrapper drops root to the regular WSL user. Avoid sending
-  # an inaccessible root-only cwd to that user when plain `glm` is launched.
+  # an inaccessible root-only cwd to that user when chat is launched.
   if ((EUID == 0)) && command -v runuser >/dev/null 2>&1; then
     run_as_user="${GLM_LINUX_USER:-$(getent passwd 1000 | cut -d: -f1 || true)}"
     if [[ -n "$run_as_user" && "$run_as_user" != root ]] &&
