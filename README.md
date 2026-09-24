@@ -18,7 +18,8 @@ GitHub-репозиторий: `https://github.com/FrankRappo/glm-orchestrator`.
 - Команда в WSL: `glm`.
 - Native-обёртка: `/usr/local/bin/glm-linux`.
 - Windows fallback: `/usr/local/bin/glm-win`.
-- Ссылка в `PATH`: `/usr/local/bin/glm`.
+- Ссылка в `PATH`: `/usr/local/bin/glm` → `bin/glm` (чат без аргументов,
+  остальные команды передаются штатному `glm-linux`).
 - Runtime GLM: Linux Electron/Node 24.14.0 из официального ZCode 3.14.1.
 - Терминальный мультиплексор: tmux 3.4.
 
@@ -79,12 +80,16 @@ curl -4 https://api.ipify.org
 Для интерактивного разговора без очереди задач см.
 [`INTERACTIVE_START.txt`](INTERACTIVE_START.txt). В текущей установке
 `glm tui` не работает из-за отсутствующего `@zcode/tui`, поэтому доступен
-`bin/glm-chat` — многоходовый терминальный диалог через headless GLM:
+`bin/glm-chat` — многоходовый терминальный диалог через headless GLM.
+Для короткой команды из любого каталога ссылка должна указывать на
+диспетчер `bin/glm`:
 
 ```bash
-/work/glm/bin/glm-chat --project /work/my-project
+sudo ln -sfn /work/glm/bin/glm /usr/local/bin/glm
+cd /work/my-project && glm
+glm chat --project /work/my-project
 # Полный доступ к инструментам без подтверждений — только явно:
-/work/glm/bin/glm-chat --project /work/my-project --mode yolo
+glm chat --project /work/my-project --mode yolo
 ```
 
 GLM сам пишет задачи и управляет очередью:

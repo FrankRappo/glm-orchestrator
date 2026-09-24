@@ -7,6 +7,7 @@ import unittest
 
 
 CHAT = Path(__file__).resolve().parents[1] / "bin" / "glm-chat"
+DISPATCH = Path(__file__).resolve().parents[1] / "bin" / "glm"
 
 
 class GlmChatTests(unittest.TestCase):
@@ -49,6 +50,7 @@ class GlmChatTests(unittest.TestCase):
         self.assertNotIn("--resume", first)
         self.assertEqual(second[second.index("--resume") + 1], "sess_test123")
         self.assertIn("--resume sess_test123", result.stdout)
+        self.assertIn("Resume later: glm chat", result.stdout)
 
     def test_continue_only_on_first_turn(self):
         result = self.call_chat("first\nsecond\n/exit\n", "--continue")
@@ -83,6 +85,54 @@ class GlmChatTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertFalse(self.log.exists())
+
+
+class GlmCommandTests(unittest.TestCase):
+    def test_symlinked_short_command_finds_repository_entrypoints(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bin_dir = root / "repo" / "bin"
+            bin_dir.mkdir(parents=True)
+            (bin_dir / "glm").write_bytes(DISPATCH.read_bytes())
+            (bin_dir / "glm").chmod(0o755)
+            for name in ("glm-chat", "glm-linux"):
+                path = bin_dir / name
+                path.write_text(f"#!/bin/sh\necho {name}\n", encoding="utf-8")
+                path.chmod(0o755)
+            short_command = root / "glm"
+            short_command.symlink_to(bin_dir / "glm")
+            for arguments, expected in (([], "glm-chat"), (["--version"], "glm-linux")):
+                result = subprocess.run([str(short_command), *arguments], cwd=root,
+                                        text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+
+    def test_plain_glm_opens_chat_and_other_commands_use_native_cli(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            chat = root / "chat"
+            native = root / "native"
+            for path, kind in ((chat, "chat"), (native, "native")):
+                path.write_text(
+                    "#!/usr/bin/env python3\n"
+                    "import json, os, sys\n"
+                    f"print(json.dumps({{'kind':'{kind}', 'args':sys.argv[1:], 'cwd':os.getcwd()}}))\n",
+                    encoding="utf-8",
+                )
+                path.chmod(0o755)
+            env = dict(os.environ, GLM_CHAT_ENTRY=str(chat), GLM_NATIVE_ENTRY=str(native))
+            for arguments, expected_kind, expected_args in (
+                ([], "chat", []),
+                (["chat", "--mode", "yolo"], "chat", ["--mode", "yolo"]),
+                (["--version"], "native", ["--version"]),
+                (["--prompt", "hello"], "native", ["--prompt", "hello"]),
+            ):
+                result = subprocess.run([str(DISPATCH), *arguments], cwd=root, env=env,
+                                        text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertEqual((payload["kind"], payload["args"]),
+                                 (expected_kind, expected_args))
 
 
 if __name__ == "__main__":

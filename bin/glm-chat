@@ -100,7 +100,7 @@ def main():
         print(f"GLM> {response['response']}")
 
     if session:
-        resume_command = [str(Path(__file__).resolve()), "--project", str(project),
+        resume_command = ["glm", "chat", "--project", str(project),
                           "--resume", session]
         print(f"Resume later: {shlex.join(resume_command)}")
     return 0
