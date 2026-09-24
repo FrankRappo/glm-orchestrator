@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Interactive fallback for installations where the ZCode TUI is unavailable."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+
+def parse_response(output):
+    decoder = json.JSONDecoder()
+    index = 0
+    responses = []
+    while index < len(output):
+        start = output.find("{", index)
+        if start < 0:
+            break
+        try:
+            value, length = decoder.raw_decode(output[start:])
+        except json.JSONDecodeError:
+            index = start + 1
+            continue
+        index = start + length
+        if isinstance(value, dict) and isinstance(value.get("response"), str):
+            responses.append(value)
+    return responses[-1] if responses else None
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Multi-turn GLM chat without the ZCode TUI")
+    parser.add_argument("--project", default=".", help="existing project directory")
+    parser.add_argument("--mode", choices=("plan", "yolo"), default="plan",
+                        help="plan: no Bash/Edit/Write; yolo: unrestricted tool execution")
+    selection = parser.add_mutually_exclusive_group()
+    selection.add_argument("--continue", dest="continue_last", action="store_true",
+                           help="continue latest session for this project")
+    selection.add_argument("--resume", metavar="SESSION_ID", help="resume a sess_... session")
+    args = parser.parse_args()
+
+    project = Path(args.project).expanduser().resolve()
+    if not project.is_dir():
+        parser.error(f"project directory does not exist: {project}")
+
+    glm_bin = os.environ.get("GLM_CHAT_BIN", "glm")
+    session = args.resume
+    continue_last = args.continue_last
+    print(f"GLM chat: {project} (mode={args.mode})")
+    if args.mode == "yolo":
+        print("WARNING: yolo can run commands and change files without asking permission.")
+    print("Type a message and press Enter. /exit ends the chat; Ctrl+C interrupts it.")
+
+    while True:
+        try:
+            prompt = input("You> ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if prompt.strip() in ("/exit", "/quit"):
+            break
+        if not prompt.strip():
+            continue
+
+        command = [glm_bin, "--cwd", str(project), "--mode", args.mode,
+                   "--surface", "terminal", "--no-color", "--json"]
+        if args.mode == "plan":
+            command += ["--disallowed-tools", "Bash Edit Write"]
+        if session:
+            command += ["--resume", session]
+        elif continue_last:
+            command += ["--continue"]
+        command += ["--prompt", prompt]
+
+        try:
+            result = subprocess.run(command, capture_output=True, text=True,
+                                    encoding="utf-8", errors="replace", check=False)
+        except FileNotFoundError:
+            print(f"GLM CLI not found: {glm_bin}", file=sys.stderr)
+            return 127
+        except KeyboardInterrupt:
+            print("\nTurn interrupted; it may already have changed files. No automatic retry.",
+                  file=sys.stderr)
+            return 130
+        if result.returncode:
+            print(f"GLM turn failed (exit {result.returncode}); no automatic retry.",
+                  file=sys.stderr)
+            if result.stderr.strip():
+                print(result.stderr.strip(), file=sys.stderr)
+            return result.returncode
+
+        response = parse_response(result.stdout)
+        if response is None or not response.get("sessionId"):
+            print("GLM returned no response or session ID; no automatic retry.",
+                  file=sys.stderr)
+            return 1
+        session = response["sessionId"]
+        continue_last = False
+        print(f"GLM> {response['response']}")
+
+    if session:
+        resume_command = [str(Path(__file__).resolve()), "--project", str(project),
+                          "--resume", session]
+        print(f"Resume later: {shlex.join(resume_command)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

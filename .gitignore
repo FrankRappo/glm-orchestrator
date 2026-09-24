@@ -4,6 +4,7 @@
 /worktrees/*
 /artifacts/*
 /limits/*
+/venvs/
 /smoke-*/
 *.previous-*
 

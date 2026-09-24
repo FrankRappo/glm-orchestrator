@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 python3 "$ROOT/common/tests/test_quota_monitor.py"
+python3 "$ROOT/tests/test_glm_chat.py"
 bash "$ROOT/glm/tests/test_glm_framework.sh"
 
 while IFS= read -r script; do

@@ -76,6 +76,17 @@ curl -4 https://api.ipify.org
 
 ## Основные команды
 
+Для интерактивного разговора без очереди задач см.
+[`INTERACTIVE_START.txt`](INTERACTIVE_START.txt). В текущей установке
+`glm tui` не работает из-за отсутствующего `@zcode/tui`, поэтому доступен
+`bin/glm-chat` — многоходовый терминальный диалог через headless GLM:
+
+```bash
+/work/glm/bin/glm-chat --project /work/my-project
+# Полный доступ к инструментам без подтверждений — только явно:
+/work/glm/bin/glm-chat --project /work/my-project --mode yolo
+```
+
 GLM сам пишет задачи и управляет очередью:
 
 ```bash
@@ -225,19 +236,20 @@ CLI, файлы, git и проверяемые результаты.
 
 ## Текущие ограничения
 
-На 2026-09-21 проверено:
+На 2026-09-24 проверено:
 
 | Возможность | Статус |
 | --- | --- |
 | `glm --version` | работает |
 | `glm doctor --json` | работает |
 | запуск команды внутри tmux | работает |
-| интерактивный `glm tui` | не требуется оркестратору |
+| интерактивный `glm tui` | в текущей установке отсутствует `@zcode/tui`; используйте `bin/glm-chat` |
 | headless model prompt | авторизован, `orchestrate doctor --live` проходит |
 | GLM-5.3 / Flash / 5.2 / 5-Turbo | live-проверка проходит |
 | 5h / weekly / MCP quota | читаются из authenticated API |
 | token ledger | работает через `orchestrate usage` |
 
 TUI оркестратору не требуется: рабочий путь использует штатный headless
-`--prompt`. Нельзя запускать реальную задачу, пока `orchestrate doctor --live`
+`--prompt`. Тот же headless-путь использует `bin/glm-chat` для диалога.
+Нельзя запускать реальную задачу, пока `orchestrate doctor --live`
 не завершится успешно.
