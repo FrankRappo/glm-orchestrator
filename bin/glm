@@ -98,6 +98,24 @@ shortcut_mode_args(){
     printf '%s\0' "${out[@]}"
   fi
 }
+model_shortcut_opens_tui(){
+  local arg
+  while (($#)); do
+    arg="$1"
+    case "$arg" in
+      --no-confirm|--no-confirmation|--no-confirmations|--yolo|--dangerously-bypass-approvals-and-sandbox)
+        shift ;;
+      --mode)
+        if (($# >= 2)); then shift 2; else shift; fi ;;
+      --mode=*)
+        shift ;;
+      *)
+        return 1 ;;
+    esac
+  done
+  return 0
+}
+
 run_model_shortcut(){
   local model_id="$1"
   shift
@@ -112,8 +130,8 @@ run_model_shortcut(){
 
   local next="${1:-}"
   local args=()
-  if (($# == 0)); then
-    mapfile -d '' -t args < <(shortcut_mode_args)
+  if (($# == 0)) || model_shortcut_opens_tui "$@"; then
+    mapfile -d '' -t args < <(shortcut_mode_args "$@")
     exec "$TUI" "${args[@]}"
   fi
 

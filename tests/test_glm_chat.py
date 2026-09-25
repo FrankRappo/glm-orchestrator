@@ -170,6 +170,7 @@ class GlmCommandTests(unittest.TestCase):
                 (["--model", "5.3"], "GLM-5.3"),
                 (["--model", "5.3", "--no-confirm"], "GLM-5.3"),
                 (["--model", "5.3", "flash"], "GLM-5.3-Flash"),
+                (["--model", "5.3", "flash", "--no-confirm"], "GLM-5.3-Flash"),
             ):
                 result = subprocess.run([str(DISPATCH), *arguments], cwd=root, env=env,
                                         text=True, capture_output=True, check=False)
