@@ -7,7 +7,7 @@ SETTINGS_ROOT="$(cd "$COMMON_ROOT/.." && pwd)"
 GLM_ROOT="$SETTINGS_ROOT/glm"
 ORCHESTRATOR="$GLM_ROOT/glm_orchestrator.template.sh"
 GLM_CONTROLLER="$GLM_ROOT/glm_controller.template.sh"
-QUOTA_MONITOR="$COMMON_ROOT/quota_monitor.py"
+QUOTA_MONITOR="${QUOTA_MONITOR:-$COMMON_ROOT/quota_monitor.py}"
 QUOTA_WATCH="$COMMON_ROOT/quota_watch.template.sh"
 QUOTA_WATCH_SESSION="${QUOTA_WATCH_SESSION:-agent_quota_watch}"
 
@@ -114,6 +114,9 @@ case "$command_name" in
       -e "PROJECT_DIR=$PROJECT_DIR" -e "CONTROLLER=$CONTROLLER" -e "TASK_AUTHOR=$author" \
       -e "GOAL_FILE=$GOAL_FILE" -e "MAX_PARALLEL=$MAX_PARALLEL" -e "IDLE_EXIT=$IDLE_EXIT" \
       -e "QUOTA_POLICY=$QUOTA_POLICY" -e "GLM_BIN=${GLM_BIN:-glm}" \
+      -e "QUOTA_MONITOR=$QUOTA_MONITOR" \
+      -e "QUOTA_RESERVE_PERCENT=${QUOTA_RESERVE_PERCENT:-15}" \
+      -e "GLM_RUNTIME_LIMIT_ENABLED=${GLM_RUNTIME_LIMIT_ENABLED:-0}" \
       -e "GLM_PATH_STYLE=${GLM_PATH_STYLE:-native}" -e "POLL=${POLL:-10}" \
       bash "$runner"
     python3 - "$PROJECT_DIR/orch/launch.json" "$session" "$CONTROLLER" "$author" <<'PY'

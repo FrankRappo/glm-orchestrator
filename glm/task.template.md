@@ -7,7 +7,7 @@ Mode: yolo
 Resource-Lock: none
 No-Respawn: false
 Max-Respawn: 3
-Max-Runtime-Seconds: 7200
+Max-Runtime-Seconds: 0
 
 ## Objective
 

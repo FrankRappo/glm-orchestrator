@@ -95,6 +95,42 @@ glm chat --project /work/my-project
 glm chat --project /work/my-project --mode yolo
 ```
 
+### Root/yolo shortcuts для GLM-5.3
+
+Для запуска модели в стиле Codex с максимальными локальными правами есть
+короткий путь через тот же диспетчер `glm`. Shortcut выставляет личный provider
+config без секретов, выбирает модель, включает `--mode yolo` если `--mode` не
+передан явно, принимает aliases `--no-confirm`, `--yolo` и
+`--dangerously-bypass-approvals-and-sandbox`, и ставит `GLM_LINUX_KEEP_ROOT=1`,
+чтобы root-запуск не сбрасывался на обычного WSL-пользователя:
+
+```bash
+# GLM-5.3, TUI, yolo/no-confirm, root сохраняется если команда запущена из root shell
+glm --model 5.3
+
+# GLM-5.3-Flash, TUI, yolo/no-confirm
+glm --model 5.3 flash
+
+# Явно без подтверждений; aliases эквивалентны yolo для shortcut-а
+glm --model 5.3 --no-confirm
+glm --model 5.3 --yolo
+glm --model 5.3 --dangerously-bypass-approvals-and-sandbox
+
+# Одноразовый headless prompt тем же root/yolo shortcut
+glm --model 5.3 --prompt "проверь проект и предложи план"
+```
+
+Shortcut не делает `sudo` сам. Если нужен именно root из Windows Terminal или
+PowerShell, запускайте WSL под root и используйте Linux-путь проекта:
+
+```powershell
+wsl.exe -d Ubuntu-24.04 -u root -- bash -lc 'cd /work/my-project && glm --model 5.3'
+wsl.exe -d Ubuntu-24.04 -u root -- bash -lc 'cd /work/my-project && glm --model 5.3 flash'
+```
+
+UNC-путь Windows `\\wsl.localhost\Ubuntu-24.04\work\glm` соответствует
+Linux-пути `/work/glm`; внутри WSL в командах используйте `/work/...`.
+
 GLM сам пишет задачи и управляет очередью:
 
 ```bash
@@ -252,6 +288,7 @@ CLI, файлы, git и проверяемые результаты.
 | `glm doctor --json` | работает |
 | запуск команды внутри tmux | работает |
 | интерактивный `glm` / `glm tui` | собранный CLI открыл TUI и ответил через GLM-5.3; нужен `/work/zcode-official-source` и обычный Node |
+| `glm --model 5.3` / `glm --model 5.3 flash` | выбирают GLM-5.3 или GLM-5.3-Flash, включают yolo/no-confirm и сохраняют root при root-запуске |
 | headless model prompt | авторизован, `orchestrate doctor --live` проходит |
 | GLM-5.3 / Flash / 5.2 / 5-Turbo | live-проверка проходит |
 | 5h / weekly / MCP quota | читаются из authenticated API |

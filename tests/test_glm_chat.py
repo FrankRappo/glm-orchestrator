@@ -139,6 +139,81 @@ class GlmCommandTests(unittest.TestCase):
                 self.assertEqual((payload["kind"], payload["args"]),
                                  (expected_kind, expected_args))
 
+
+    def test_model_shortcut_opens_root_yolo_tui_with_selected_provider(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            tui = root / "tui"
+            native = root / "native"
+            chat = root / "chat"
+            script = (
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "provider_path = os.environ.get('ZCODE_PERSONAL_PROVIDER_CONFIG_FILE')\n"
+                "provider = json.loads(pathlib.Path(provider_path).read_text()) if provider_path else None\n"
+                "print(json.dumps({\n"
+                "  'argv': sys.argv[1:],\n"
+                "  'keep_root': os.environ.get('GLM_LINUX_KEEP_ROOT'),\n"
+                "  'provider_path': provider_path,\n"
+                "  'model': provider['config']['defaultModelSelection']['modelId'] if provider else None,\n"
+                "  'provider': provider['config']['defaultModelSelection']['providerId'] if provider else None,\n"
+                "}))\n"
+            )
+            for path in (tui, native, chat):
+                path.write_text(script, encoding="utf-8")
+                path.chmod(0o755)
+            cache = root / "cache"
+            env = dict(os.environ, GLM_TUI_ENTRY=str(tui), GLM_NATIVE_ENTRY=str(native),
+                       GLM_CHAT_ENTRY=str(chat), GLM_MODEL_CONFIG_DIR=str(cache))
+
+            for arguments, expected_model in (
+                (["--model", "5.3"], "GLM-5.3"),
+                (["--model", "5.3", "--no-confirm"], "GLM-5.3"),
+                (["--model", "5.3", "flash"], "GLM-5.3-Flash"),
+            ):
+                result = subprocess.run([str(DISPATCH), *arguments], cwd=root, env=env,
+                                        text=True, capture_output=True, check=False)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                payload = json.loads(result.stdout)
+                self.assertEqual(payload["argv"], ["--mode", "yolo"])
+                self.assertEqual(payload["keep_root"], "1")
+                self.assertEqual(payload["provider"], "account:zai-individual-coding-plan")
+                self.assertEqual(payload["model"], expected_model)
+                self.assertTrue(Path(payload["provider_path"]).is_file())
+
+    def test_model_shortcut_routes_headless_prompt_to_native(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            native = root / "native"
+            native.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "provider=json.loads(pathlib.Path(os.environ['ZCODE_PERSONAL_PROVIDER_CONFIG_FILE']).read_text())\n"
+                "print(json.dumps({'argv':sys.argv[1:], 'model':provider['config']['defaultModelSelection']['modelId'], "
+                "'keep_root':os.environ.get('GLM_LINUX_KEEP_ROOT')}))\n",
+                encoding="utf-8",
+            )
+            native.chmod(0o755)
+            env = dict(os.environ, GLM_NATIVE_ENTRY=str(native), GLM_MODEL_CONFIG_DIR=str(root / "cache"))
+            result = subprocess.run(
+                [str(DISPATCH), "--model", "5.3", "--prompt", "hello"], cwd=root, env=env,
+                text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["argv"], ["--mode", "yolo", "--prompt", "hello"])
+            self.assertEqual(payload["model"], "GLM-5.3")
+            self.assertEqual(payload["keep_root"], "1")
+
+            result = subprocess.run(
+                [str(DISPATCH), "--model", "5.3", "--mode", "plan", "--no-confirm",
+                 "--prompt", "hello"],
+                cwd=root, env=env, text=True, capture_output=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["argv"], ["--mode", "yolo", "--prompt", "hello"])
+
     def test_tui_launcher_uses_standalone_node_and_preserves_project_path(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

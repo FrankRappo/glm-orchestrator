@@ -109,8 +109,13 @@ Mode: build | edit | plan | yolo
 Resource-Lock: none | <name>
 No-Respawn: true | false
 Max-Respawn: 3
-Max-Runtime-Seconds: 7200
+Max-Runtime-Seconds: 0
 ```
+
+`0` means no runtime deadline. The supervisor leaves runtime limits disabled by default,
+even if an older task specifies a positive value. To enforce a task deadline, set
+`GLM_RUNTIME_LIMIT_ENABLED=1` when starting `orchestrate` and give the task a
+positive `Max-Runtime-Seconds` value.
 
 Autonomous headless tasks should use `Mode: yolo`. ZCode's `build` and `edit`
 modes expect an interactive permission client; the launcher maps them to

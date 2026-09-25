@@ -16,7 +16,8 @@ CONTROLLER="${CONTROLLER:-manual}"
 LAUNCHER="${LAUNCHER:-$ROOT/glm_agent_launcher.template.sh}"
 GLM_BIN="${GLM_BIN:-glm}"
 MAX_RESPAWN="${MAX_RESPAWN:-3}"
-MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-7200}"
+MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-0}"
+GLM_RUNTIME_LIMIT_ENABLED="${GLM_RUNTIME_LIMIT_ENABLED:-0}"
 POLL="${POLL:-10}"
 RATE_LIMIT_WAIT_SECONDS="${RATE_LIMIT_WAIT_SECONDS:-900}"
 RATE_LIMIT_MAX_WAITS="${RATE_LIMIT_MAX_WAITS:-32}"
@@ -84,7 +85,7 @@ while :; do
   timed_out=0
   while kill -0 "$pid" 2>/dev/null; do
     now=$(date +%s)
-    if (( now - started >= MAX_RUNTIME_SECONDS )); then
+    if [[ "$GLM_RUNTIME_LIMIT_ENABLED" == 1 ]] && (( MAX_RUNTIME_SECONDS > 0 && now - started >= MAX_RUNTIME_SECONDS )); then
       timed_out=1
       log "runtime limit ${MAX_RUNTIME_SECONDS}s reached; terminating pgid=$pid"
       terminate_tree "$pid"

@@ -76,6 +76,41 @@ IFS=$'\t' read -r complexity provider model mode resource no_respawn max_respawn
 [[ "$provider" == account:zai-individual-coding-plan ]]
 [[ "$model" == GLM-5.3-Flash ]]
 [[ "$mode" == build ]]
+[[ "$max_runtime" == 0 ]]
+
+# A positive legacy task deadline is ignored unless the operator opts in.
+cat > "$WORK/slow-launcher" <<'SH'
+#!/usr/bin/env bash
+sleep 2
+printf 'STATUS: SUCCESS\n' > "$REPORT"
+SH
+chmod +x "$WORK/slow-launcher"
+timeout_report="$project/reports/report_timeout_disabled.md"
+env TASK=timeout_disabled PROJECT_DIR="$project" TASK_FILE="$project/tasks/T01_low.md" \
+  REPORT="$timeout_report" LOG="$project/logs/timeout_disabled.log" \
+  STATE_DIR="$project/state/glm" PROVIDER_ID=test MODEL_ID=test \
+  LAUNCHER="$WORK/slow-launcher" MAX_RESPAWN=0 MAX_RUNTIME_SECONDS=1 \
+  GLM_RUNTIME_LIMIT_ENABLED=0 POLL=1 \
+  bash "$ROOT/glm_supervisor.template.sh"
+grep -q '^STATUS: SUCCESS$' "$timeout_report"
+if grep -q 'runtime limit' "$project/logs/timeout_disabled.log.supervisor"; then
+  echo "disabled runtime limit still terminated the worker" >&2
+  exit 1
+fi
+
+# An explicit opt-in restores the deadline for tasks that need one.
+timeout_report="$project/reports/report_timeout_enabled.md"
+if env TASK=timeout_enabled PROJECT_DIR="$project" TASK_FILE="$project/tasks/T01_low.md" \
+  REPORT="$timeout_report" LOG="$project/logs/timeout_enabled.log" \
+  STATE_DIR="$project/state/glm" PROVIDER_ID=test MODEL_ID=test \
+  LAUNCHER="$WORK/slow-launcher" MAX_RESPAWN=0 MAX_RUNTIME_SECONDS=1 \
+  GLM_RUNTIME_LIMIT_ENABLED=1 POLL=1 \
+  bash "$ROOT/glm_supervisor.template.sh"; then
+  echo "enabled runtime limit failed to terminate the worker" >&2
+  exit 1
+fi
+grep -q 'runtime limit 1s reached' "$project/logs/timeout_enabled.log.supervisor"
+grep -q '^STATUS: BLOCKED$' "$timeout_report"
 
 cat > "$project/tasks/T02_invalid.md" <<'EOF'
 # invalid model fixture
@@ -108,7 +143,8 @@ project2="$WORK/project-dispatch"
 mkdir -p "$project2/tasks"
 cp "$project/tasks/T01_low.md" "$project2/tasks/T01_low.md"
 quota_session="quota_test_$$"
-GLM_BIN="$WORK/fake-glm" QUOTA_WATCH_SESSION="$quota_session" POLL=1 \
+GLM_BIN="$WORK/fake-glm" QUOTA_MONITOR="$WORK/fake-quota" \
+  QUOTA_WATCH_SESSION="$quota_session" POLL=1 \
   bash "$ROOT/../common/orchestrate.template.sh" start \
     --project "$project2" --controller codex --idle-exit --quota-policy warn
 main_session="agent_orch_$(printf '%s' "$project2" | sha256sum | cut -c1-8)"
@@ -130,7 +166,8 @@ project3="$WORK/project-glm-controller"
 mkdir -p "$project3"
 printf 'Implement a harmless fixture.\n' > "$project3/GOAL.md"
 quota_session3="quota_test_glm_$$"
-GLM_BIN="$WORK/fake-glm" QUOTA_WATCH_SESSION="$quota_session3" POLL=1 \
+GLM_BIN="$WORK/fake-glm" QUOTA_MONITOR="$WORK/fake-quota" \
+  QUOTA_WATCH_SESSION="$quota_session3" POLL=1 \
   bash "$ROOT/../common/orchestrate.template.sh" start \
     --project "$project3" --controller glm --goal "$project3/GOAL.md" \
     --idle-exit --quota-policy warn

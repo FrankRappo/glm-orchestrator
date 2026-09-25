@@ -159,7 +159,8 @@ start_task(){
     -e "LOG=$LOG_DIR/$task.log" -e "STATE_DIR=$STATE_DIR" -e "PROVIDER_ID=$provider" \
     -e "MODEL_ID=$model" -e "MODE=$mode" -e "CONTROLLER=$CONTROLLER" \
     -e "USAGE_LEDGER=$LOG_DIR/glm_usage.jsonl" \
-    -e "MAX_RESPAWN=$max_respawn" -e "MAX_RUNTIME_SECONDS=$max_runtime" -e "POLL=$POLL" \
+    -e "MAX_RESPAWN=$max_respawn" -e "MAX_RUNTIME_SECONDS=$max_runtime" \
+    -e "GLM_RUNTIME_LIMIT_ENABLED=${GLM_RUNTIME_LIMIT_ENABLED:-0}" -e "POLL=$POLL" \
     -e "GLM_BIN=$GLM_BIN" -e "NOTIFY_CMD=${NOTIFY_CMD:-}" \
     bash "$SUPERVISOR"
 }

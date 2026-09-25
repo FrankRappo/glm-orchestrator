@@ -72,7 +72,7 @@ def resolve(task: Path, policy_path: Path) -> dict[str, object]:
         "resource_lock": sanitize_lock(values.get("resource-lock")),
         "no_respawn": boolean(values.get("no-respawn")),
         "max_respawn": integer(values.get("max-respawn"), 3),
-        "max_runtime_seconds": integer(values.get("max-runtime-seconds"), 7200, 60),
+        "max_runtime_seconds": integer(values.get("max-runtime-seconds"), 0),
     }
 
 

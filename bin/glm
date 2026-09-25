@@ -8,6 +8,144 @@ CHAT="${GLM_CHAT_ENTRY:-$ROOT/bin/glm-chat}"
 TUI="${GLM_TUI_ENTRY:-$ROOT/bin/glm-tui}"
 NATIVE="${GLM_NATIVE_ENTRY:-$ROOT/bin/glm-linux}"
 
+model_shortcut_config(){
+  local model_id="$1"
+  local provider_id="${GLM_MODEL_PROVIDER_ID:-account:zai-individual-coding-plan}"
+  local safe_model="${model_id//[^A-Za-z0-9_.-]/_}"
+  local config_dir="${GLM_MODEL_CONFIG_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/glm/model-shortcuts}"
+  mkdir -p "$config_dir"
+  local config_file="$config_dir/${safe_model}.provider.json"
+  python3 - "$config_file" "$provider_id" "$model_id" <<'PYCFG'
+import json, os, sys
+path, provider, model = sys.argv[1:]
+data = {
+    "schemaVersion": 1,
+    "config": {
+        "providerConfigRules": {"providerRules": []},
+        "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
+        "defaultModelSelection": {"providerId": provider, "modelId": model},
+    },
+}
+os.makedirs(os.path.dirname(path), exist_ok=True)
+tmp = f"{path}.tmp.{os.getpid()}"
+with open(tmp, "w", encoding="utf-8") as handle:
+    json.dump(data, handle, ensure_ascii=False, indent=2)
+    handle.write("\n")
+os.replace(tmp, path)
+PYCFG
+  printf '%s\n' "$config_file"
+}
+
+normalize_model_shortcut(){
+  local primary="${1:-}"
+  local variant="${2:-}"
+  local token="${primary,,}"
+  token="${token//_/-}"
+  variant="${variant,,}"
+  case "$token:$variant" in
+    5.3:flash|glm-5.3:flash|glm-5.3-flash:*|5.3-flash:*|flash:*) printf '%s\n' 'GLM-5.3-Flash' ;;
+    5.3:*|glm-5.3:*) printf '%s\n' 'GLM-5.3' ;;
+    5.2:*|glm-5.2:*) printf '%s\n' 'GLM-5.2' ;;
+    turbo:*|5-turbo:*|glm-5-turbo:*) printf '%s\n' 'GLM-5-Turbo' ;;
+    *) echo "glm: unsupported --model value: $primary${variant:+ $variant}" >&2; return 2 ;;
+  esac
+}
+
+no_confirm_requested(){
+  local arg
+  for arg in "$@"; do
+    case "$arg" in
+      --no-confirm|--no-confirmation|--no-confirmations|--yolo|--dangerously-bypass-approvals-and-sandbox)
+        return 0 ;;
+    esac
+  done
+  return 1
+}
+
+shortcut_mode_args(){
+  local force_yolo=0 has_mode=0
+  local out=()
+  no_confirm_requested "$@" && force_yolo=1
+
+  while (($#)); do
+    case "$1" in
+      --no-confirm|--no-confirmation|--no-confirmations|--yolo|--dangerously-bypass-approvals-and-sandbox)
+        shift ;;
+      --mode)
+        if ((force_yolo)); then
+          if (($# >= 2)); then shift 2; else shift; fi
+        else
+          has_mode=1
+          if (($# >= 2)); then out+=("$1" "$2"); shift 2; else out+=("$1"); shift; fi
+        fi ;;
+      --mode=*)
+        if ((force_yolo)); then
+          shift
+        else
+          has_mode=1
+          out+=("$1")
+          shift
+        fi ;;
+      *)
+        out+=("$1")
+        shift ;;
+    esac
+  done
+
+  if ((force_yolo || ! has_mode)); then
+    printf '%s\0' --mode yolo "${out[@]}"
+  else
+    printf '%s\0' "${out[@]}"
+  fi
+}
+run_model_shortcut(){
+  local model_id="$1"
+  shift
+  local provider_runtime_path
+  provider_runtime_path="$(model_shortcut_config "$model_id")"
+  export ZCODE_PERSONAL_PROVIDER_CONFIG_FILE="$provider_runtime_path"
+  export GLM_LINUX_KEEP_ROOT=1
+  case ":${WSLENV:-}:" in
+    *:ZCODE_PERSONAL_PROVIDER_CONFIG_FILE:*) ;;
+    *) export WSLENV="${WSLENV:+$WSLENV:}ZCODE_PERSONAL_PROVIDER_CONFIG_FILE" ;;
+  esac
+
+  local next="${1:-}"
+  local args=()
+  if (($# == 0)); then
+    mapfile -d '' -t args < <(shortcut_mode_args)
+    exec "$TUI" "${args[@]}"
+  fi
+
+  if [[ "$next" == tui ]]; then
+    shift
+    mapfile -d '' -t args < <(shortcut_mode_args "$@")
+    exec "$TUI" "${args[@]}"
+  fi
+
+  if [[ "$next" == chat ]]; then
+    shift
+    mapfile -d '' -t args < <(shortcut_mode_args "$@")
+    exec "$CHAT" "${args[@]}"
+  fi
+
+  mapfile -d '' -t args < <(shortcut_mode_args "$@")
+  exec "$NATIVE" "${args[@]}"
+}
+
+if [[ "${1:-}" == --model ]]; then
+  (($# >= 2)) || { echo "glm: --model requires a value (5.3 or 5.3 flash)" >&2; exit 2; }
+  model_value="$2"
+  shift 2
+  model_variant=""
+  if [[ "${1:-}" =~ ^([Ff][Ll][Aa][Ss][Hh])$ ]]; then
+    model_variant="$1"
+    shift
+  fi
+  model_id="$(normalize_model_shortcut "$model_value" "$model_variant")"
+  run_model_shortcut "$model_id" "$@"
+fi
+
 if (($# == 0)) || [[ "$1" == tui ]]; then
   if (($#)); then shift; fi
   exec "$TUI" "$@"
