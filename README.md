@@ -21,8 +21,10 @@ GitHub-репозиторий: `https://github.com/FrankRappo/glm-orchestrator`.
 - Ссылка в `PATH`: `/usr/local/bin/glm` → `bin/glm` (полноэкранный TUI без
   аргументов, текстовый чат через `glm chat`, остальные команды через `glm-linux`).
 - Runtime headless GLM: Linux Electron/Node 24.14.0 из официального ZCode 3.14.1.
-- Runtime TUI: собранный CLI из `/work/zcode-official-source` через обычный
-  `/usr/bin/node` 22.23.1. Для TUI нужен доступный интерактивный терминал.
+- Runtime TUI: собранный CLI из `/work/zcode-official-source` через отдельный
+  standalone Node `/opt/node-v24.14.0-linux-x64/bin/node` 24.14.0; если он
+  отсутствует, fallback — `/usr/bin/node` 22.23.1. Для TUI нужен доступный
+  интерактивный терминал.
 - Терминальный мультиплексор: tmux 3.4.
 
 Проверенные базовые команды:
@@ -93,6 +95,27 @@ glm tui --cwd /work/my-project
 glm chat --project /work/my-project
 # Полный доступ к инструментам без подтверждений — только явно:
 glm chat --project /work/my-project --mode yolo
+```
+
+### Standalone Node 24 для TUI
+
+Официальная версия Node для исходников ZCode — 24.14.0. Она установлена
+отдельно, без замены системного `/usr/bin/node`:
+
+```bash
+/opt/node-v24.14.0-linux-x64/bin/node --version
+# v24.14.0
+
+node --version
+# системный Node остаётся v22.23.1
+```
+
+`glm tui` и короткий `glm` автоматически выбирают
+`/opt/node-v24.14.0-linux-x64/bin/node`, если файл существует. Для ручного
+переопределения используйте:
+
+```bash
+GLM_TUI_NODE=/opt/node-v24.14.0-linux-x64/bin/node glm
 ```
 
 ### Root/yolo shortcuts для GLM-5.3
@@ -287,7 +310,7 @@ CLI, файлы, git и проверяемые результаты.
 | `glm --version` | работает |
 | `glm doctor --json` | работает |
 | запуск команды внутри tmux | работает |
-| интерактивный `glm` / `glm tui` | собранный CLI открыл TUI и ответил через GLM-5.3; нужен `/work/zcode-official-source` и обычный Node |
+| интерактивный `glm` / `glm tui` | собранный CLI открыл TUI и ответил через GLM-5.3; по умолчанию используется standalone Node 24.14.0 из `/opt/node-v24.14.0-linux-x64/bin/node` |
 | `glm --model 5.3` / `glm --model 5.3 flash` | выбирают GLM-5.3 или GLM-5.3-Flash, включают yolo/no-confirm и сохраняют root при root-запуске |
 | headless model prompt | авторизован, `orchestrate doctor --live` проходит |
 | GLM-5.3 / Flash / 5.2 / 5-Turbo | live-проверка проходит |

@@ -3,7 +3,14 @@
 # external ArrayBuffer, so its embedded Node runtime cannot render this TUI.
 set -euo pipefail
 
-NODE="${GLM_TUI_NODE:-/usr/bin/node}"
+DEFAULT_NODE24="/opt/node-v24.14.0-linux-x64/bin/node"
+if [[ -n "${GLM_TUI_NODE:-}" ]]; then
+  NODE="$GLM_TUI_NODE"
+elif [[ -x "$DEFAULT_NODE24" ]]; then
+  NODE="$DEFAULT_NODE24"
+else
+  NODE="/usr/bin/node"
+fi
 CLI="${GLM_TUI_CLI:-/work/zcode-official-source/apps/zcode-cli/packages/cli/dist/zcode.cjs}"
 PROVIDER="${ZCODE_LINUX_BUILTIN_PROVIDER:-/opt/ZCode/resources/config/provider/zcode-builtin.json}"
 
