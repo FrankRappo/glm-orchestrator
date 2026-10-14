@@ -34,7 +34,7 @@ PROJECT=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --project) PROJECT="${2:?--project требует путь}"; shift 2;;
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
+    -h|--help) grep '^#' "$0" | grep -v '^#!' | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "неизвестный аргумент: $1 (см. --help)" >&2; exit 2;;
   esac
 done
