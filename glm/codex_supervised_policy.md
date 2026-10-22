@@ -33,11 +33,13 @@ mode, SUCCESS is a candidate result, never independent acceptance or deployment.
 - Application-specific rules override this generic policy. For Darkhaven,
   source, Git operations, and tests stay on the VPS through the canonical
   gateway; never create or run a local application stand.
-- Model routing is project-configurable. In this workspace, use GLM-5.3 with
-  text input for source exploration, implementation, testing, fixes, and source
-  review. Use GLM-5.3-Flash with image input for screenshot or image
-  interpretation; do not route those inputs to GLM-5.3.
-- Treat Flash visual findings as bounded evidence. They do not replace Codex's
+- Use GLM-5.3 for every task, complexity, and input type in this workspace.
+  This includes source work, testing, review, and screenshot/image inspection.
+  `auto` also selects GLM-5.3; do not switch to Flash or an older model.
+- Inspect permitted screenshots yourself with the available image tools;
+  a separate visual worker is not required. Record the inspected image paths
+  and whether they were opened. If tools cannot open them, report the gap.
+- Treat visual findings as bounded evidence. They do not replace Codex's
   independent source and final-diff review, and a screenshot verdict alone
   does not prove functional behavior.
 - Do not invent business policy, permissions, defaults, or requirements. Do not

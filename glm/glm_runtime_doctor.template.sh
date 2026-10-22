@@ -32,7 +32,9 @@ trap 'rm -rf "$tmp"' EXIT
 chmod 0755 "$tmp"
 config="$tmp/provider.json"
 provider="${GLM_PROVIDER_ID:-account:zai-individual-coding-plan}"
-model="${GLM_DOCTOR_MODEL:-GLM-5.3-Flash}"
+model="${GLM_DOCTOR_MODEL:-GLM-5.3}"
+printf 'Model: %s\n' "$model" > "$tmp/doctor-task.md"
+python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" "$tmp/doctor-task.md" >/dev/null
 python3 - "$config" "$provider" "$model" <<'PY'
 import json, sys
 json.dump({"schemaVersion":1,"config":{"providerConfigRules":{"providerRules":[]},

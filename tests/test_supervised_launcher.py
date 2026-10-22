@@ -68,17 +68,55 @@ class SupervisedTests(unittest.TestCase):
         self.task.write_text(headers)
         return metadata.resolve(self.task, ROOT / "glm/model_policy.json")
 
-    def test_image_auto_uses_flash_even_for_critical_task(self):
-        result = self.resolve("Complexity: critical\nInput: image\nModel: auto\n")
-        self.assertEqual(result["model_id"], "GLM-5.3-Flash")
+    def test_all_task_routes_use_53(self):
+        for controller in ("manual", "glm", "codex"):
+            for complexity in ("low", "medium", "high", "critical"):
+                for input_type in ("text", "image"):
+                    for model in ("auto", "inherit", "GLM-5.3", "glm-5.3"):
+                        with self.subTest(controller=controller, complexity=complexity,
+                                          input=input_type, model=model):
+                            self.task.write_text(f"Complexity: {complexity}\nInput: {input_type}\nModel: {model}\n")
+                            result = metadata.resolve(self.task, ROOT / "glm/model_policy.json", controller)
+                            self.assertEqual(result["model_id"], "GLM-5.3")
 
-    def test_image_explicit_incapable_model_is_rejected(self):
-        with self.assertRaisesRegex(SystemExit, "image tasks require"):
-            self.resolve("Input: image\nModel: GLM-5.3\n")
+    def test_image_explicit_53_is_accepted(self):
+        self.assertEqual(self.resolve("Input: image\nModel: GLM-5.3\n")["model_id"], "GLM-5.3")
 
-    def test_explicit_flash_and_text_53_keep_requested_models(self):
-        self.assertEqual(self.resolve("Input: image\nModel: GLM-5.3-Flash\n")["model_id"], "GLM-5.3-Flash")
-        self.assertEqual(self.resolve("Input: text\nModel: GLM-5.3\n")["model_id"], "GLM-5.3")
+    def test_other_models_are_rejected_for_all_inputs_and_controllers(self):
+        for controller in ("manual", "glm", "codex"):
+            for input_type in ("text", "image"):
+                for model in ("GLM-5.3-Flash", "GLM-5.2", "GLM-5-Turbo"):
+                    with self.subTest(controller=controller, input=input_type, model=model):
+                        self.task.write_text(f"Input: {input_type}\nModel: {model}\n")
+                        with self.assertRaises(SystemExit):
+                            metadata.resolve(self.task, ROOT / "glm/model_policy.json", controller)
+
+    def test_default_headers_use_53(self):
+        self.assertEqual(self.resolve("")["model_id"], "GLM-5.3")
+        self.assertEqual(self.resolve("Input: image\n")["model_id"], "GLM-5.3")
+
+    def test_supervised_image_uses_53_without_flash_handoff(self):
+        result = self.resolve("Policy: CODEX_SUPERVISED_V1\nInput: image\nModel: auto\n")
+        self.assertEqual(result["model_id"], "GLM-5.3")
+
+    def test_doctor_and_planner_reject_other_model_overrides(self):
+        fake = self.root / "fake-glm"
+        fake.write_text("#!/usr/bin/env bash\ncase \" $* \" in *' --version '*) echo 0.test;; *' doctor '*) echo '{}';; *) touch \"$MODEL_CALL_MARKER\";; esac\n")
+        fake.chmod(0o755)
+        goal = self.root / "GOAL.md"
+        goal.write_text("Bounded fixture")
+        marker = self.root / "model-called"
+        env = dict(os.environ, GLM_BIN=str(fake), MODEL_CALL_MARKER=str(marker),
+                   PROJECT_DIR=str(self.root), GOAL_FILE=str(goal),
+                   GLM_DOCTOR_MODEL="GLM-5.3-Flash", GLM_CONTROLLER_MODEL="GLM-5.3-Flash")
+        for script, args in (("glm_runtime_doctor.template.sh", ["--live"]),
+                             ("glm_controller.template.sh", [])):
+            with self.subTest(script=script):
+                result = subprocess.run(["bash", str(ROOT / "glm" / script), *args],
+                                        env=env, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("unsupported model", result.stderr)
+                self.assertFalse(marker.exists())
 
     def test_unknown_input_is_rejected(self):
         with self.assertRaisesRegex(SystemExit, "unsupported input"):

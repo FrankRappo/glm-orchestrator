@@ -129,8 +129,10 @@ in the current monitor; do not change model routing on that assumption alone.
 
 The default efficiency guidance in controller/worker prompts avoids redundant
 context replay and full-suite reruns, while retaining every acceptance gate.
-`Complexity: low` with `Model: auto` still routes mechanical work to Flash;
-complex design, integration, and critical verification remain on GLM-5.3.
+All complexities and both text/image inputs now use GLM-5.3, including
+`Model: auto`. GLM-5.3 inspects permitted screenshots itself; Flash handoff is
+not required. The task policy rejects other models, and the planner and live
+doctor validate against the same policy.
 
 `quota-policy=warn` allows work when the snapshot is unknown or stale but still
 defers a model whose known buckets have reached the reserve. `enforce` also

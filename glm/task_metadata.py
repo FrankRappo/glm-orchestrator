@@ -63,11 +63,6 @@ def resolve(task: Path, policy_path: Path, controller: str = "manual") -> dict[s
             model = required
         elif model.lower() != required.lower():
             raise SystemExit(f"supervised {input_type} tasks require {required} in {task}")
-    elif input_type == "image":
-        if requested.lower() in {"", "auto", "inherit"}:
-            model = "GLM-5.3-Flash"
-        elif model.lower() != "glm-5.3-flash":
-            raise SystemExit(f"image tasks require GLM-5.3-Flash in {task}")
     allowed = {str(item).lower(): str(item) for item in policy.get("allowed_models", [])}
     if model.lower() not in allowed:
         raise SystemExit(f"unsupported model in {task}: {model}")

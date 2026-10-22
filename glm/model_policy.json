@@ -4,18 +4,15 @@
   "provider_id": "account:zai-individual-coding-plan",
   "supervised_input_models": {
     "text": "GLM-5.3",
-    "image": "GLM-5.3-Flash"
+    "image": "GLM-5.3"
   },
   "complexity_models": {
-    "low": "GLM-5.3-Flash",
+    "low": "GLM-5.3",
     "medium": "GLM-5.3",
     "high": "GLM-5.3",
     "critical": "GLM-5.3"
   },
   "allowed_models": [
-    "GLM-5.3",
-    "GLM-5.3-Flash",
-    "GLM-5.2",
-    "GLM-5-Turbo"
+    "GLM-5.3"
   ]
 }

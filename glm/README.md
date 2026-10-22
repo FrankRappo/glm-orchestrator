@@ -104,7 +104,8 @@ Supported headers:
 
 ```text
 Complexity: low | medium | high | critical
-Model: auto | GLM-5.3 | GLM-5.3-Flash | GLM-5.2 | GLM-5-Turbo
+Model: auto | GLM-5.3
+Input: text | image
 Mode: build | edit | plan | yolo
 Resource-Lock: none | <name>
 No-Respawn: true | false
@@ -126,7 +127,7 @@ Default policy:
 
 | Complexity | Model |
 | --- | --- |
-| low | GLM-5.3-Flash |
+| low | GLM-5.3 |
 | medium | GLM-5.3 |
 | high | GLM-5.3 |
 | critical | GLM-5.3 |
@@ -135,16 +136,21 @@ Critical work still requires independent review by the owning Codex session or
 another explicitly chosen reviewer. Model price alone is not a verification
 strategy.
 
-`GLM-5.2` and `GLM-5-Turbo` are accepted as explicit per-task overrides. Auto
-routing intentionally stays on the currently verified 5.3 family.
+Every task uses GLM-5.3, including `auto`/`inherit`, all complexities, and
+both `Input: text` and `Input: image`. Other task models are rejected by the
+workspace policy. The planner and live doctor also validate their selected
+model against that policy; an override cannot silently select Flash.
+
+GLM-5.3 can inspect permitted screenshots itself through available image tools.
+Provide the screenshot paths or allowed capture target and report which images
+were actually opened. No separate Flash task is needed. Screenshot evidence
+does not replace the applicable behavioral tests.
 
 The planner and workers also default to token-conscious execution: targeted
 file reads, concise evidence, focused tests during edits, and required broad
-validation at the end. This does not relax acceptance or verification. Low
-complexity tasks already route to Flash; medium/high/critical stay on GLM-5.3
-to protect quality. Selecting Flash or GLM-5.2 with the default Coding Plan
-provider does **not** prove a separate free allowance is being used; check the
-actual provider and quota snapshot before claiming savings.
+validation at the end. This does not relax acceptance or verification.
+Complexity describes task scope; it no longer selects a cheaper model. Check
+the actual provider and quota snapshot before claiming savings.
 
 ## Runtime status
 

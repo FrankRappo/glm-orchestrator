@@ -2,7 +2,8 @@
 
 Complexity: medium
 Model: auto
-<!-- Explicit overrides: GLM-5.3, GLM-5.3-Flash, GLM-5.2, GLM-5-Turbo -->
+<!-- All complexities and inputs use GLM-5.3; auto resolves to GLM-5.3. -->
+Input: text
 Mode: yolo
 Resource-Lock: none
 No-Respawn: false

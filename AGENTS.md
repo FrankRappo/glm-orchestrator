@@ -1,6 +1,7 @@
 # GLM Orchestrator Repository
 
 - Execute clear local edit/test/verify work autonomously.
+- Always use GLM-5.3 for framework tasks, planning, and live checks, at every complexity and for both text and image inputs. `auto`/`inherit` resolve to GLM-5.3; do not switch to Flash or older models. GLM-5.3 can inspect permitted screenshots itself through available image tools; record images actually opened and report missing tool support without inventing a visual result.
 - For Codex-supervised GLM work, follow [`docs/CODEX_SUPERVISED.md`](docs/CODEX_SUPERVISED.md) and inject the `CODEX_SUPERVISED_V1` policy; worker success is only a candidate result until Codex independently accepts it.
 - Default GLM controller mode is launch-only: prepare the task, launch it, verify once that the actual worker/model started, then return control. Do not keep polling, reviewing, fixing, or starting follow-up tasks unless the user explicitly requests supervised mode. Keep operational supervisor and exact cleanup guards active.
 - GLM tasks run without wall-clock or inactivity limits by default. Never enable a runtime deadline, idle-kill timer, or time-based credential cleanup guard unless the user explicitly requests that limit. Cleanup follows workload exit or manual stop; it must not cut off active work by elapsed time.

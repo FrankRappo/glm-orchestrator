@@ -53,14 +53,15 @@ changes in this planning turn.
 Avoid unnecessary context replay: use the goal's supplied evidence and inspect only relevant
 paths, group coherent work rather than creating redundant tiny tasks, and keep each task file
 concise and self-contained without copying large documents or logs. Mark bounded mechanical
-tasks `Complexity: low` so the existing auto policy uses Flash; keep complex design, integration,
-and critical verification on the capable model. Require targeted checks per task and one final
+tasks `Complexity: low` for scope tracking; every task uses GLM-5.3, including screenshots,
+image interpretation, complex design, integration, and critical verification. Require targeted checks per task and one final
 broad validation, not repeated full suites without a changed failure hypothesis.
 
 Write a controller summary to `$controller_report`. Its final line must be
 `STATUS: SUCCESS` only if at least one valid task file was created; otherwise use BLOCKED.
 EOF
 mv "$controller_task.tmp" "$controller_task"
+python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" "$controller_task" >/dev/null
 
 env TASK=CONTROLLER_PLAN PROJECT_DIR="$PROJECT_DIR" TASK_FILE="$controller_task" \
   REPORT="$controller_report" LOG="$LOG_DIR/glm_controller.log" STATE_DIR="$STATE_DIR" \

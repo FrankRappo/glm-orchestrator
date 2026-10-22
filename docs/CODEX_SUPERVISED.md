@@ -51,13 +51,20 @@ network access or remote production credentials.
 
 ## Role and input routing
 
-Model routing is project-configurable and must be explicit in each supervised
-task. For this workspace, source exploration, implementation, testing, fixes,
-and source review use `Model: GLM-5.3` with `Input: text`. Screenshot and image
-interpretation use `Model: GLM-5.3-Flash` with `Input: image`; GLM-5.3 is not
-used for those inputs.
+This workspace uses `Model: GLM-5.3` for every task and complexity, including
+source exploration, implementation, tests, fixes, review, and screenshots.
+`Model: auto` and `inherit` also resolve to GLM-5.3. The workspace policy rejects
+other task models rather than silently switching to Flash or an older model.
+Use `Input: text` for source work and `Input: image` for screenshot/image work;
+input type does not change the model.
 
-Keep visual interpretation bounded to visual evidence. A Flash screenshot
+GLM-5.3 can inspect screenshots itself using the image tools available within
+the task boundary. Provide the permitted screenshot paths or capture target;
+a separate Flash worker is not required. Report whether the image was actually
+opened and which files were inspected; if image tools are unavailable, report
+that gap rather than claiming a visual check from text alone.
+
+Keep visual interpretation bounded to visual evidence. A screenshot
 finding does not replace Codex's independent source and final-diff review, and
 a screenshot verdict alone does not prove functional behavior. Codex still
 runs the applicable trusted behavioral checks before acceptance.

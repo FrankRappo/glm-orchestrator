@@ -74,7 +74,7 @@ metadata="$(python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" 
 IFS=$'\t' read -r complexity provider model mode resource no_respawn max_respawn max_runtime <<< "$metadata"
 [[ "$complexity" == low ]]
 [[ "$provider" == account:zai-individual-coding-plan ]]
-[[ "$model" == GLM-5.3-Flash ]]
+[[ "$model" == GLM-5.3 ]]
 [[ "$mode" == build ]]
 [[ "$max_runtime" == 0 ]]
 
@@ -185,7 +185,7 @@ timeout 35s env PROJECT_DIR="$project" IDLE_EXIT=1 MAX_PARALLEL=1 POLL=1 \
 
 grep -q '^STATUS: SUCCESS$' "$project/reports/report_T01.md"
 grep -q '^STATUS: SUCCESS$' "$project/reports/report_T02.md"
-grep -q 'model=GLM-5.3-Flash' "$project/reports/report_T01.md"
+grep -q 'model=GLM-5.3' "$project/reports/report_T01.md"
 grep -q 'Prefer targeted file reads' "$project/state/glm/T01_low.prompt.md"
 grep -q 'Never skip acceptance gates' "$project/state/glm/T01_low.prompt.md"
 [[ -f "$project/reports/ALL_DONE" ]]

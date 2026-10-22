@@ -11,11 +11,12 @@ Max-Runtime-Seconds: 0
 Policy: CODEX_SUPERVISED_V1
 Controller-Mode: launch-only
 
-Use `Model: GLM-5.3` with `Input: text` for source exploration,
-implementation, testing, fixes, and source review. For screenshot or image
-interpretation, use a separate task with `Model: GLM-5.3-Flash` and
-`Input: image`; do not route image input to GLM-5.3. Model routing may be
-overridden by application-specific rules.
+Use `Model: GLM-5.3` for every task and complexity. Use `Input: text` for
+source exploration, implementation, tests, fixes, and review; use `Input: image`
+for screenshot/image inspection. GLM-5.3 inspects permitted screenshots itself
+with available image tools; provide image paths or the permitted capture target.
+Do not switch to Flash or create a separate worker just to view screenshots.
+Record which images were actually opened and any unavailable tool capability.
 
 ## Controller lifecycle
 
@@ -96,7 +97,7 @@ production credentials are always forbidden.
 - Preserve all unrelated and pre-existing changes.
 
 For a visual task, record what the screenshot can establish and the trusted
-behavioral check that proves the related function. A Flash visual verdict does
+behavioral check that proves the related function. A visual verdict does
 not replace Codex's independent source or final-diff review.
 
 ## Trusted checks
