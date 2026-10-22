@@ -112,6 +112,42 @@ fi
 grep -q 'runtime limit 1s reached' "$project/logs/timeout_enabled.log.supervisor"
 grep -q '^STATUS: BLOCKED$' "$timeout_report"
 
+# Hang autorestart: a worker that goes silent (no CPU, no writes, no model IO)
+# is killed and respawned; the retry writes the report and the queue converges.
+# Orchestrator-side log noise (e.g. QUOTA-DEFER every poll) must not reset the
+# hang timer, so a background writer keeps touching the orchestrator log.
+cat > "$WORK/hang-launcher" <<'SH'
+#!/usr/bin/env bash
+if [[ -f "$STATE_DIR/hang_marker" ]]; then
+  printf '# hang retry report\n\nSTATUS: SUCCESS\n' > "$REPORT"
+  exit 0
+fi
+: > "$STATE_DIR/hang_marker"
+sleep 300
+SH
+chmod +x "$WORK/hang-launcher"
+# Noise must outlive the 60s supervisor timeout: if framework-owned writes ever
+# count as worker activity again, the hang never fires and the test fails on rc.
+( for _ in $(seq 1 90); do printf '[noise] QUOTA-DEFER model=GLM-5.3\n' >> "$project/logs/glm_orchestrator.log"; sleep 1; done ) &
+hang_noise_pid=$!
+hang_report="$project/reports/report_hang_restart.md"
+hang_rc=0
+env TASK=hang_restart PROJECT_DIR="$project" TASK_FILE="$project/tasks/T01_low.md" \
+  REPORT="$hang_report" LOG="$project/logs/hang_restart.log" \
+  STATE_DIR="$project/state/glm" PROVIDER_ID=test MODEL_ID=test \
+  LAUNCHER="$WORK/hang-launcher" MAX_RESPAWN=1 MAX_RUNTIME_SECONDS=0 \
+  GLM_HANG_TIMEOUT_SECONDS=4 POLL=1 \
+  timeout 60s bash "$ROOT/glm_supervisor.template.sh" || hang_rc=$?
+kill "$hang_noise_pid" 2>/dev/null || true
+wait "$hang_noise_pid" 2>/dev/null || true
+if [[ "$hang_rc" -ne 0 ]]; then
+  echo "hang autorestart supervisor exited rc=$hang_rc" >&2
+  exit 1
+fi
+grep -q '^STATUS: SUCCESS$' "$hang_report"
+grep -q 'HANG: no activity' "$project/logs/hang_restart.log.supervisor"
+grep -q 'retrying (1/1)' "$project/logs/hang_restart.log.supervisor"
+
 cat > "$project/tasks/T02_invalid.md" <<'EOF'
 # invalid model fixture
 Complexity: low

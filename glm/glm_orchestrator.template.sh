@@ -143,7 +143,7 @@ quota_allows(){
 start_task(){
   local task="$1" tf report metadata complexity provider model mode resource no_respawn max_respawn max_runtime session
   tf="$(task_file "$task")"; report="$(report_file "$task")"
-  metadata="$(python3 "$METADATA" --policy "$POLICY" "$tf")" || { log "invalid metadata task=$task"; return 1; }
+  metadata="$(python3 "$METADATA" --policy "$POLICY" --controller "$CONTROLLER" "$tf")" || { log "invalid metadata task=$task"; return 1; }
   IFS=$'\t' read -r complexity provider model mode resource no_respawn max_respawn max_runtime <<< "$metadata"
   [[ "$no_respawn" == true ]] && max_respawn=0
   quota_allows "$model" || return 1
@@ -161,6 +161,7 @@ start_task(){
     -e "USAGE_LEDGER=$LOG_DIR/glm_usage.jsonl" \
     -e "MAX_RESPAWN=$max_respawn" -e "MAX_RUNTIME_SECONDS=$max_runtime" \
     -e "GLM_RUNTIME_LIMIT_ENABLED=${GLM_RUNTIME_LIMIT_ENABLED:-0}" -e "POLL=$POLL" \
+    -e "GLM_HANG_TIMEOUT_SECONDS=${GLM_HANG_TIMEOUT_SECONDS:-2700}" \
     -e "GLM_BIN=$GLM_BIN" -e "NOTIFY_CMD=${NOTIFY_CMD:-}" \
     bash "$SUPERVISOR"
 }

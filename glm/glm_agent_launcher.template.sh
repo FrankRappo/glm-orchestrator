@@ -2,6 +2,7 @@
 # Run one headless GLM/ZCode task. The supervisor owns retries and timeouts.
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="${PROJECT_DIR:?need PROJECT_DIR}"
 TASK="${TASK:?need TASK}"
 TASK_FILE="${TASK_FILE:?need TASK_FILE}"
@@ -54,6 +55,10 @@ save tokens.
 
 --- TASK BELOW ---
 PREAMBLE
+  if [[ "$CONTROLLER" == codex ]]; then
+    cat "$ROOT/codex_supervised_policy.md"
+    printf '\n--- CONTROLLER TASK ---\n'
+  fi
   cat "$TASK_FILE"
 } > "$tmp_prompt"
 mv "$tmp_prompt" "$PROMPT_FILE"

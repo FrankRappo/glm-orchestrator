@@ -45,7 +45,7 @@ def sanitize_lock(value: str | None) -> str:
     return result[:80] or "none"
 
 
-def resolve(task: Path, policy_path: Path) -> dict[str, object]:
+def resolve(task: Path, policy_path: Path, controller: str = "manual") -> dict[str, object]:
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     values = headers(task)
     complexity = values.get("complexity", str(policy.get("default_complexity", "medium"))).lower()
@@ -54,6 +54,20 @@ def resolve(task: Path, policy_path: Path) -> dict[str, object]:
         complexity = str(policy.get("default_complexity", "medium"))
     requested = values.get("model", "auto")
     model = mapping[complexity] if requested.lower() in {"", "auto", "inherit"} else requested
+    input_type = values.get("input", "text").lower()
+    if input_type not in {"text", "image"}:
+        raise SystemExit(f"unsupported input in {task}: {input_type}")
+    if controller == "codex" or values.get("policy") == "CODEX_SUPERVISED_V1":
+        required = policy["supervised_input_models"][input_type]
+        if requested.lower() in {"", "auto", "inherit"}:
+            model = required
+        elif model.lower() != required.lower():
+            raise SystemExit(f"supervised {input_type} tasks require {required} in {task}")
+    elif input_type == "image":
+        if requested.lower() in {"", "auto", "inherit"}:
+            model = "GLM-5.3-Flash"
+        elif model.lower() != "glm-5.3-flash":
+            raise SystemExit(f"image tasks require GLM-5.3-Flash in {task}")
     allowed = {str(item).lower(): str(item) for item in policy.get("allowed_models", [])}
     if model.lower() not in allowed:
         raise SystemExit(f"unsupported model in {task}: {model}")
@@ -81,8 +95,9 @@ def main() -> int:
     parser.add_argument("task", type=Path)
     parser.add_argument("--policy", type=Path, default=Path(__file__).with_name("model_policy.json"))
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--controller", choices=("codex", "glm", "manual"), default="manual")
     args = parser.parse_args()
-    data = resolve(args.task, args.policy)
+    data = resolve(args.task, args.policy, args.controller)
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
     else:

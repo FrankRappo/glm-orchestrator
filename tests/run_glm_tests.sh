@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 python3 "$ROOT/common/tests/test_quota_monitor.py"
 python3 "$ROOT/tests/test_glm_chat.py"
+python3 "$ROOT/tests/test_supervised_launcher.py"
+python3 "$ROOT/glm/tests/test_landlock_exec.py"
 bash "$ROOT/glm/tests/test_glm_framework.sh"
 
 while IFS= read -r script; do

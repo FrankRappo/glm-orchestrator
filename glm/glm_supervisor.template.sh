@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # Supervise one headless GLM task: terminal report contract, retries, quota waits.
+# Hang autorestart (2026-09-29): worker process может жить, стоя на оборванном
+# модельном стриме (инцидент: оба воркера двух очередей молчали 2.5 ч). Сигналы
+# активности — ЛЮБОЙ из трёх: CPU дерева воркера вырос / файлы в каталоге очереди
+# или логе обновились / свежий rollout-exec файл сессии (ловится по fd процессов).
+# Записи самого фреймворка (state/, orch/, logs/) активностью не считаются:
+# иначе QUOTA-DEFER в логе оркестратора на каждом poll вечно сбрасывал бы таймер.
+# Тишина дольше GLM_HANG_TIMEOUT_SECONDS → kill+respawn (в счёт MAX_RESPAWN).
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -18,6 +25,7 @@ GLM_BIN="${GLM_BIN:-glm}"
 MAX_RESPAWN="${MAX_RESPAWN:-3}"
 MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-0}"
 GLM_RUNTIME_LIMIT_ENABLED="${GLM_RUNTIME_LIMIT_ENABLED:-0}"
+GLM_HANG_TIMEOUT_SECONDS="${GLM_HANG_TIMEOUT_SECONDS:-2700}"   # 0 = hang-детект выключен
 POLL="${POLL:-10}"
 RATE_LIMIT_WAIT_SECONDS="${RATE_LIMIT_WAIT_SECONDS:-900}"
 RATE_LIMIT_MAX_WAITS="${RATE_LIMIT_MAX_WAITS:-32}"
@@ -60,6 +68,60 @@ terminate_tree(){
   kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
 }
 
+# --- hang detection helpers -----------------------------------------------
+# CPU дерева процессов (jiffies, utime+stime): зависший на стриме воркер не
+# ест CPU вовсе; здоровый — ест сам или через детей (chromium/node/bash-инструменты).
+tree_cpu_jiffies(){
+  local root="$1" pid p stat_line rest ppid utime stime acc=0
+  local -a queue=("$root")
+  local -A seen=()
+  while (( ${#queue[@]} )); do
+    pid="${queue[0]}"; queue=("${queue[@]:1}")
+    [[ -z "${seen[$pid]:-}" ]] || continue
+    seen[$pid]=1
+    stat_line="$(cat "/proc/$pid/stat" 2>/dev/null)" || continue
+    rest="${stat_line##*) }"
+    read -r _ ppid _ _ _ _ _ _ _ _ _ utime stime _ <<< "$rest"
+    acc=$(( acc + utime + stime ))
+    while read -r p; do queue+=("$p"); done < <(pgrep -P "$pid" 2>/dev/null)
+  done
+  echo "$acc"
+}
+
+# Свежий mtime rollout/exec файла сессии, если дерево воркера держит его открытым
+# (CLI дозаписывает файл при каждом модельном вызове — между вызовами закрывает).
+rollout_fd_mtime(){
+  local pgid="$1" pid f target t best=0
+  for pid in $(pgrep -g "$pgid" 2>/dev/null); do
+    for f in /proc/$pid/fd/*; do
+      target="$(readlink "$f" 2>/dev/null)" || continue
+      case "$target" in
+        */cli/rollout/model-io-sess_*|*/cli/exec/sess_*) ;;
+        *) continue ;;
+      esac
+      t="$(stat -Lc %Y "$f" 2>/dev/null)" || continue
+      (( t > best )) && best=$t
+    done
+  done
+  echo "$best"
+}
+
+# Самый свежий файл под каталогом (артефакты долгих tool-вызовов: генерации,
+# скриншоты, отчёты) — второй сигнал активности помимо модельных вызовов.
+# state/, orch/ и logs/ (включая STATE_DIR и каталог LOG) исключаются: их пишут
+# супервизор и оркестратор, а не воркер; LOG воркера проверяется отдельно.
+newest_mtime_under(){
+  local dir="$1" extra t
+  local -a prune=()
+  shift
+  for extra in "$@"; do
+    [[ -n "$extra" && -d "$extra" ]] && prune+=( -o -path "$extra" )
+  done
+  t="$(find "$dir" \( -path "$dir/state" -o -path "$dir/orch" "${prune[@]}" \) -prune \
+        -o -type f -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+  echo "${t%%.*}"
+}
+
 rate_limited(){ tail -n 120 "$LOG" 2>/dev/null | grep -aiE "$RATE_LIMIT_RE" | tail -1; }
 auth_blocked(){ tail -n 120 "$LOG" 2>/dev/null | grep -aiE "$AUTH_RE" | tail -1; }
 
@@ -83,6 +145,9 @@ while :; do
   printf '%s\n' "$pid" > "$STATE_DIR/$TASK.pid"
 
   timed_out=0
+  hang_killed=0
+  last_active="$started"
+  last_cpu=-1
   while kill -0 "$pid" 2>/dev/null; do
     now=$(date +%s)
     if [[ "$GLM_RUNTIME_LIMIT_ENABLED" == 1 ]] && (( MAX_RUNTIME_SECONDS > 0 && now - started >= MAX_RUNTIME_SECONDS )); then
@@ -90,6 +155,23 @@ while :; do
       log "runtime limit ${MAX_RUNTIME_SECONDS}s reached; terminating pgid=$pid"
       terminate_tree "$pid"
       break
+    fi
+    if (( GLM_HANG_TIMEOUT_SECONDS > 0 )); then
+      activity=0
+      t="$(stat -c %Y "$LOG" 2>/dev/null || echo 0)"; (( t > activity )) && activity=$t
+      t="$(newest_mtime_under "$PROJECT_DIR" "$STATE_DIR" "$(dirname "$LOG")")"; (( t > activity )) && activity=$t
+      t="$(rollout_fd_mtime "$pid")"; (( t > activity )) && activity=$t
+      cpu="$(tree_cpu_jiffies "$pid")"
+      if (( last_cpu >= 0 && cpu > last_cpu )); then activity=$now; fi
+      last_cpu="$cpu"
+      (( activity > last_active )) && last_active=$activity
+      if (( now - last_active >= GLM_HANG_TIMEOUT_SECONDS )); then
+        hang_killed=1
+        log "HANG: no activity $((now - last_active))s (cpu=${cpu}j) ≥ ${GLM_HANG_TIMEOUT_SECONDS}s; terminating pgid=$pid"
+        notify "GLM task $TASK hung $((now - last_active))s+ without activity; restarting"
+        terminate_tree "$pid"
+        break
+      fi
     fi
     sleep "$POLL"
   done
@@ -130,6 +212,7 @@ while :; do
   if (( attempt > MAX_RESPAWN )); then
     reason="GLM worker failed without a terminal report after $attempt attempts (last rc=$rc"
     [[ "$timed_out" == 1 ]] && reason+=", runtime timeout"
+    [[ "$hang_killed" == 1 ]] && reason+=", hang timeout ${GLM_HANG_TIMEOUT_SECONDS}s"
     reason+=")."
     write_blocked_report "$reason"
     log "$reason"
