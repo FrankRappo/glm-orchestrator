@@ -10,8 +10,8 @@ than claiming success.
 After a verified start, do not keep polling status, read the result, review
 patches, run QA, issue corrections, or launch follow-up tasks without a new user
 request. GLM continues its already assigned bounded task independently. Do not
-stop the worker when returning control. Its operational supervisor, timeout,
-quota controls, and exact credential/process cleanup guards remain active;
+stop the worker when returning control. Its operational supervisor, quota controls, and exact credential/process
+cleanup guards remain active;
 these are infrastructure responsibilities, not ongoing Codex supervision.
 
 Use **supervised** mode only when the user explicitly requests monitoring,
@@ -76,12 +76,19 @@ secrets and host/session controls before the first model turn.
 
 Any temporary model-provider authentication needs an independent controller
 cleanup guard outside the worker process group. Arm it before launch. On queue
-exit, timeout, hang, or crash, stop and verify the dedicated workload, including
+exit, explicit manual stop, or crash, stop and verify the dedicated workload, including
 detached descendants, before removing its temporary profile. A worker wrapper's
 `finally` block alone does not survive SIGTERM/SIGKILL. Prefer a dedicated cgroup
 where available; a single-task UID guard must check actual UID/PID/starttime and
 verify that no active processes remain. Test abnormal termination explicitly.
 Never revoke the shared provider login as cleanup of a temporary task profile.
+
+Tasks run without wall-clock or inactivity deadlines by default. Never enable
+a runtime/idle limit or an independent cleanup timer that kills an active worker
+unless the user explicitly requests that limit. A cleanup guard waits for actual
+workload exit/manual stop, without a maximum duration. Provider quota admission
+and actual authentication/configuration errors still apply.
+
 
 Cleanup receipts must distinguish observed deletion/process absence from claims
 about unrelated profile integrity. Claim unchanged shared files only with actual

@@ -155,7 +155,9 @@ stored JSON response logs.
 - Quota errors wait without consuming the ordinary respawn counter.
 - Missing OAuth, no selected model, and coding-plan errors become
   `STATUS: BLOCKED` instead of restart storms.
-- A task has a hard runtime deadline.
+- Tasks have no wall-clock or inactivity deadline by default. A deadline may be
+  enabled only when the user explicitly requests it; cleanup follows exit or
+  manual stop rather than cutting off an active workload by elapsed time.
 - Every worker has its own provider-selection file; changing one task's model
   does not mutate the desktop default or another task.
 - A resource lock prevents concurrent use of singleton infrastructure.

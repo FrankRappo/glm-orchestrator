@@ -25,7 +25,7 @@ GLM_BIN="${GLM_BIN:-glm}"
 MAX_RESPAWN="${MAX_RESPAWN:-3}"
 MAX_RUNTIME_SECONDS="${MAX_RUNTIME_SECONDS:-0}"
 GLM_RUNTIME_LIMIT_ENABLED="${GLM_RUNTIME_LIMIT_ENABLED:-0}"
-GLM_HANG_TIMEOUT_SECONDS="${GLM_HANG_TIMEOUT_SECONDS:-2700}"   # 0 = hang-детект выключен
+GLM_HANG_TIMEOUT_SECONDS="${GLM_HANG_TIMEOUT_SECONDS:-0}"   # opt-in only; no idle deadline by default
 POLL="${POLL:-10}"
 RATE_LIMIT_WAIT_SECONDS="${RATE_LIMIT_WAIT_SECONDS:-900}"
 RATE_LIMIT_MAX_WAITS="${RATE_LIMIT_MAX_WAITS:-32}"
@@ -50,7 +50,12 @@ report_status(){
 
 write_blocked_report(){
   local reason="$1"
-  [[ -f "$REPORT" ]] && return 0
+  [[ -n "$(report_status)" ]] && return 0
+  if [[ -s "$REPORT" ]]; then
+    local previous
+    previous="$(mktemp "$REPORT.incomplete.XXXXXX")" || return 1
+    cp -- "$REPORT" "$previous" || return 1
+  fi
   local tmp="$REPORT.tmp.$$"
   {
     printf '# %s blocked\n\n' "$TASK"

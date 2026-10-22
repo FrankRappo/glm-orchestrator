@@ -112,6 +112,26 @@ fi
 grep -q 'runtime limit 1s reached' "$project/logs/timeout_enabled.log.supervisor"
 grep -q '^STATUS: BLOCKED$' "$timeout_report"
 
+# A precreated/partial report must not suppress the terminal failure marker:
+# without it the queue would relaunch a no-respawn task forever.
+cat > "$WORK/failing-launcher" <<'SH'
+#!/usr/bin/env bash
+exit 1
+SH
+chmod +x "$WORK/failing-launcher"
+partial_report="$project/reports/report_partial_failure.md"
+printf 'Unfinished candidate notes\n' > "$partial_report"
+if env TASK=partial_failure PROJECT_DIR="$project" TASK_FILE="$project/tasks/T01_low.md" \
+  REPORT="$partial_report" LOG="$project/logs/partial_failure.log" \
+  STATE_DIR="$project/state/glm" PROVIDER_ID=test MODEL_ID=test \
+  LAUNCHER="$WORK/failing-launcher" MAX_RESPAWN=0 POLL=1 \
+  bash "$ROOT/glm_supervisor.template.sh"; then
+  echo "failed worker incorrectly succeeded" >&2
+  exit 1
+fi
+grep -q '^STATUS: BLOCKED$' "$partial_report"
+grep -q 'Unfinished candidate notes' "$partial_report".incomplete.*
+
 # Hang autorestart: a worker that goes silent (no CPU, no writes, no model IO)
 # is killed and respawned; the retry writes the report and the queue converges.
 # Orchestrator-side log noise (e.g. QUOTA-DEFER every poll) must not reset the

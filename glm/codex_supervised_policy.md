@@ -13,7 +13,7 @@ expect ongoing controller polling, review, corrections, or QA unless the user
 explicitly selected supervised mode or later requests them. Finish only your
 assigned bounded task and write its report. Never create your own follow-up
 agents/tasks to compensate for the controller being absent. Operational
-supervisor/timeout/quota and exact cleanup guards remain active.
+supervisor/quota and exact cleanup guards remain active.
 
 Only explicit supervised mode uses the controller correction loop. In either
 mode, SUCCESS is a candidate result, never independent acceptance or deployment.
@@ -79,3 +79,7 @@ mode, SUCCESS is a candidate result, never independent acceptance or deployment.
   exact changed files and final diff summary; each requirement mapped to
   evidence; exact verification commands and exit codes; and known gaps. Do not
   paste logs, prompts, large code context, or repeated reasoning.
+
+No wall-clock or inactivity deadline by default. Runtime/idle limits and guards
+that terminate active work by elapsed time require an explicit user request.
+Cleanup waits for workload exit or manual stop, without a maximum duration.

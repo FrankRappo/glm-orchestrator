@@ -29,7 +29,7 @@ overridden by application-specific rules.
 Launch-only: prepare, launch, verify the actual worker/model started once, then
 return control. Do not continue polling, reviewing results, running QA, issuing
 corrections, or launching follow-ups. Leave the worker and its operational
-supervisor/timeout/quota/cleanup guards running. The result is unreviewed until
+supervisor/quota/cleanup guards running. The result is unreviewed until
 the user requests review. Do not claim application completion.
 
 Supervised (only when explicitly requested): await the same attempt without
@@ -148,3 +148,7 @@ STATUS: FAIL
 STATUS: BLOCKED
 STATUS: PARTIAL
 ```
+
+No wall-clock or inactivity deadline by default. Runtime/idle limits and guards
+that terminate active work by elapsed time require an explicit user request.
+Cleanup waits for workload exit or manual stop, without a maximum duration.

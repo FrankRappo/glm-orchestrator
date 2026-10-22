@@ -161,7 +161,7 @@ start_task(){
     -e "USAGE_LEDGER=$LOG_DIR/glm_usage.jsonl" \
     -e "MAX_RESPAWN=$max_respawn" -e "MAX_RUNTIME_SECONDS=$max_runtime" \
     -e "GLM_RUNTIME_LIMIT_ENABLED=${GLM_RUNTIME_LIMIT_ENABLED:-0}" -e "POLL=$POLL" \
-    -e "GLM_HANG_TIMEOUT_SECONDS=${GLM_HANG_TIMEOUT_SECONDS:-2700}" \
+    -e "GLM_HANG_TIMEOUT_SECONDS=${GLM_HANG_TIMEOUT_SECONDS:-0}" \
     -e "GLM_BIN=$GLM_BIN" -e "NOTIFY_CMD=${NOTIFY_CMD:-}" \
     bash "$SUPERVISOR"
 }
