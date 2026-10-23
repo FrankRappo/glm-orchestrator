@@ -7,16 +7,20 @@ Mode: yolo
 Resource-Lock: none
 No-Respawn: false
 Max-Respawn: 3
+
+Temporary provider/network errors recover automatically under the operational
+supervisor, separately from the ordinary respawn budget. Preserve checkpoints
+and verify actual side effects before any operation is repeated.
 Max-Runtime-Seconds: 0
 Policy: CODEX_SUPERVISED_V1
 Controller-Mode: launch-only
 
-Use `Model: GLM-5.3` for every task and complexity. Use `Input: text` for
-source exploration, implementation, tests, fixes, and review; use `Input: image`
-for screenshot/image inspection. GLM-5.3 inspects permitted screenshots itself
-with available image tools; provide image paths or the permitted capture target.
-Do not switch to Flash or create a separate worker just to view screenshots.
-Record which images were actually opened and any unavailable tool capability.
+Use `Model: GLM-5.3` with `Input: text` for source exploration,
+implementation, tests, fixes, and review. Use `Model: GLM-5.3-Flash` with
+`Input: image`, `Input: vnc`, or `Interface: vnc` for screenshot/VNC work.
+These routes are mandatory at every complexity. Provide image paths or the
+permitted capture target, and record the actual model ID, which images were
+opened, and any unavailable tool capability.
 
 ## Controller lifecycle
 
@@ -25,6 +29,8 @@ Record which images were actually opened and any unavailable tool capability.
 - Worker session/attempt ID: `<attempt-id-or-pending>`
 - Startup evidence: `<actual worker/model start, or startup failure>`
 - Report path: `reports/report_T<NN>.md`
+- Default cadence: delegate, verify actual model execution once, wait for the completed report.
+- Completion notification: `<lightweight report-ready signal, if available>`
 - Parent attempt/report: `<if explicitly assigned a correction>`
 
 Launch-only: prepare, launch, verify the actual worker/model started once, then
@@ -33,10 +39,18 @@ corrections, or launching follow-ups. Leave the worker and its operational
 supervisor/quota/cleanup guards running. The result is unreviewed until
 the user requests review. Do not claim application completion.
 
+Do not duplicate GLM's assigned investigation or implementation in Codex or
+native subagents after startup. A prepared gate, broker, queued session, or model
+configuration is not actual model execution. A status question permits one
+compact check, not a new polling/correction loop. A request to finish or fix the
+assigned GLM task does not by itself request continuous Codex supervision.
+
 Supervised (only when explicitly requested): await the same attempt without
 duplicate launches, independently review the result, issue bounded linked
 corrections with exact findings/tests/baseline, and continue through the scoped
-acceptance. Preserve raw failures and never blindly repeat side effects.
+acceptance. Wait for the completed report, preferably via a lightweight
+notification; use repeated Codex polling only when continuous monitoring was
+explicitly requested. Preserve raw failures and never blindly repeat side effects.
 
 ## Objective
 

@@ -53,16 +53,18 @@ def resolve(task: Path, policy_path: Path, controller: str = "manual") -> dict[s
     if complexity not in mapping:
         complexity = str(policy.get("default_complexity", "medium"))
     requested = values.get("model", "auto")
-    model = mapping[complexity] if requested.lower() in {"", "auto", "inherit"} else requested
     input_type = values.get("input", "text").lower()
-    if input_type not in {"text", "image"}:
+    interface = values.get("interface", "").lower()
+    if interface and interface != "vnc":
+        raise SystemExit(f"unsupported interface in {task}: {interface}")
+    if interface == "vnc":
+        input_type = "vnc"
+    if input_type not in {"text", "image", "vnc"}:
         raise SystemExit(f"unsupported input in {task}: {input_type}")
-    if controller == "codex" or values.get("policy") == "CODEX_SUPERVISED_V1":
-        required = policy["supervised_input_models"][input_type]
-        if requested.lower() in {"", "auto", "inherit"}:
-            model = required
-        elif model.lower() != required.lower():
-            raise SystemExit(f"supervised {input_type} tasks require {required} in {task}")
+    required = policy["supervised_input_models"][input_type]
+    model = required if requested.lower() in {"", "auto", "inherit"} else requested
+    if model.lower() != required.lower():
+        raise SystemExit(f"{input_type} tasks require {required} in {task}; requested {model}")
     allowed = {str(item).lower(): str(item) for item in policy.get("allowed_models", [])}
     if model.lower() not in allowed:
         raise SystemExit(f"unsupported model in {task}: {model}")

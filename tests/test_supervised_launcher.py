@@ -24,7 +24,7 @@ class SupervisedTests(unittest.TestCase):
         self.task = self.root / "task.md"
         self.task.write_text("Model: GLM-5.3\nMode: yolo\nObjective: bounded fixture\n")
 
-    def launch(self, controller, missing_policy=False):
+    def launch(self, controller, missing_policy=False, model="GLM-5.3"):
         launcher = ROOT / "glm/glm_agent_launcher.template.sh"
         if missing_policy:
             launcher = self.root / "launcher.sh"
@@ -40,7 +40,7 @@ class SupervisedTests(unittest.TestCase):
         env = dict(os.environ, PROJECT_DIR=str(self.root), TASK="T01",
                    TASK_FILE=str(self.task), REPORT=str(self.root / "report.md"),
                    LOG=str(self.root / "run.log"), STATE_DIR=str(self.root / "state"),
-                   PROVIDER_ID="test", MODEL_ID="GLM-5.3", CONTROLLER=controller,
+                   PROVIDER_ID="test", MODEL_ID=model, CONTROLLER=controller,
                    GLM_BIN=str(fake))
         return subprocess.run(["bash", str(launcher)], env=env,
                               capture_output=True, text=True)
@@ -53,6 +53,19 @@ class SupervisedTests(unittest.TestCase):
         self.assertIn("candidate result", prompt)
         self.assertIn("bounded fixture", prompt)
         self.assertLess(prompt.index("CODEX_SUPERVISED_V1"), prompt.index("bounded fixture"))
+        provider = json.loads((self.root / "state/T01.provider.json").read_text())
+        selected = provider["config"]["defaultModelSelection"]
+        self.assertEqual(selected["modelId"], "GLM-5.3")
+        self.assertEqual(selected["options"], {"reasoningLevel": "max"})
+
+    def test_flash_launcher_declares_exact_model_and_reasoning_level(self):
+        self.task.write_text("Model: GLM-5.3-Flash\nInput: image\nMode: yolo\n")
+        result = self.launch("codex", model="GLM-5.3-Flash")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        provider = json.loads((self.root / "state/T01.provider.json").read_text())
+        selected = provider["config"]["defaultModelSelection"]
+        self.assertEqual(selected["modelId"], "GLM-5.3-Flash")
+        self.assertEqual(selected["options"], {"reasoningLevel": "max"})
 
     def test_other_controller_keeps_existing_prompt(self):
         result = self.launch("manual")
@@ -68,10 +81,10 @@ class SupervisedTests(unittest.TestCase):
         self.task.write_text(headers)
         return metadata.resolve(self.task, ROOT / "glm/model_policy.json")
 
-    def test_all_task_routes_use_53(self):
+    def test_text_tasks_route_to_53_at_every_complexity(self):
         for controller in ("manual", "glm", "codex"):
             for complexity in ("low", "medium", "high", "critical"):
-                for input_type in ("text", "image"):
+                for input_type in ("text",):
                     for model in ("auto", "inherit", "GLM-5.3", "glm-5.3"):
                         with self.subTest(controller=controller, complexity=complexity,
                                           input=input_type, model=model):
@@ -79,25 +92,45 @@ class SupervisedTests(unittest.TestCase):
                             result = metadata.resolve(self.task, ROOT / "glm/model_policy.json", controller)
                             self.assertEqual(result["model_id"], "GLM-5.3")
 
-    def test_image_explicit_53_is_accepted(self):
-        self.assertEqual(self.resolve("Input: image\nModel: GLM-5.3\n")["model_id"], "GLM-5.3")
-
-    def test_other_models_are_rejected_for_all_inputs_and_controllers(self):
+    def test_visual_tasks_route_to_flash_at_every_complexity(self):
         for controller in ("manual", "glm", "codex"):
-            for input_type in ("text", "image"):
-                for model in ("GLM-5.3-Flash", "GLM-5.2", "GLM-5-Turbo"):
+            for complexity in ("low", "medium", "high", "critical"):
+                for input_type in ("image", "vnc"):
+                    for model in ("auto", "inherit", "GLM-5.3-Flash", "glm-5.3-flash"):
+                        with self.subTest(controller=controller, complexity=complexity,
+                                          input_type=input_type, model=model):
+                            self.task.write_text(f"Complexity: {complexity}\nInput: {input_type}\nModel: {model}\n")
+                            result = metadata.resolve(self.task, ROOT / "glm/model_policy.json", controller)
+                            self.assertEqual(result["model_id"], "GLM-5.3-Flash")
+
+    def test_interface_vnc_forces_flash_route(self):
+        for input_header in ("", "Input: text\n", "Input: image\n"):
+            with self.subTest(input_header=input_header):
+                result = self.resolve(input_header + "Interface: vnc\nModel: auto\n")
+                self.assertEqual(result["model_id"], "GLM-5.3-Flash")
+
+    def test_wrong_models_are_rejected_for_all_routes_and_controllers(self):
+        for controller in ("manual", "glm", "codex"):
+            routes = (
+                ("text", ("GLM-5.3-Flash", "GLM-5.2", "GLM-5-Turbo"), "GLM-5.3"),
+                ("image", ("GLM-5.3", "GLM-5.2", "GLM-5-Turbo"), "GLM-5.3-Flash"),
+                ("vnc", ("GLM-5.3", "GLM-5.2", "GLM-5-Turbo"), "GLM-5.3-Flash"),
+            )
+            for input_type, models, required in routes:
+                for model in models:
                     with self.subTest(controller=controller, input=input_type, model=model):
                         self.task.write_text(f"Input: {input_type}\nModel: {model}\n")
-                        with self.assertRaises(SystemExit):
+                        with self.assertRaisesRegex(SystemExit, f"{input_type} tasks require {required}"):
                             metadata.resolve(self.task, ROOT / "glm/model_policy.json", controller)
 
     def test_default_headers_use_53(self):
         self.assertEqual(self.resolve("")["model_id"], "GLM-5.3")
-        self.assertEqual(self.resolve("Input: image\n")["model_id"], "GLM-5.3")
+        self.assertEqual(self.resolve("Input: image\n")["model_id"], "GLM-5.3-Flash")
+        self.assertEqual(self.resolve("Input: vnc\n")["model_id"], "GLM-5.3-Flash")
 
-    def test_supervised_image_uses_53_without_flash_handoff(self):
+    def test_supervised_image_uses_flash(self):
         result = self.resolve("Policy: CODEX_SUPERVISED_V1\nInput: image\nModel: auto\n")
-        self.assertEqual(result["model_id"], "GLM-5.3")
+        self.assertEqual(result["model_id"], "GLM-5.3-Flash")
 
     def test_doctor_and_planner_reject_other_model_overrides(self):
         fake = self.root / "fake-glm"
@@ -115,12 +148,16 @@ class SupervisedTests(unittest.TestCase):
                 result = subprocess.run(["bash", str(ROOT / "glm" / script), *args],
                                         env=env, capture_output=True, text=True)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("unsupported model", result.stderr)
+                self.assertIn("text tasks require GLM-5.3", result.stderr)
                 self.assertFalse(marker.exists())
 
     def test_unknown_input_is_rejected(self):
         with self.assertRaisesRegex(SystemExit, "unsupported input"):
             self.resolve("Input: unknown\n")
+
+    def test_unknown_interface_is_rejected(self):
+        with self.assertRaisesRegex(SystemExit, "unsupported interface"):
+            self.resolve("Interface: desktop\n")
 
     def test_supervised_low_complexity_source_still_uses_53(self):
         result = self.resolve("Policy: CODEX_SUPERVISED_V1\nComplexity: low\nModel: auto\n")
@@ -128,7 +165,7 @@ class SupervisedTests(unittest.TestCase):
 
     def test_supervised_source_rejects_other_models(self):
         for model in ("GLM-5.3-Flash", "GLM-5.2"):
-            with self.subTest(model=model), self.assertRaisesRegex(SystemExit, "supervised text tasks require"):
+            with self.subTest(model=model), self.assertRaisesRegex(SystemExit, "text tasks require"):
                 self.resolve(f"Policy: CODEX_SUPERVISED_V1\nInput: text\nModel: {model}\n")
 
     def test_codex_controller_enforces_routing_without_task_marker(self):
@@ -136,7 +173,7 @@ class SupervisedTests(unittest.TestCase):
         result = metadata.resolve(self.task, ROOT / "glm/model_policy.json", "codex")
         self.assertEqual(result["model_id"], "GLM-5.3")
         self.task.write_text("Complexity: low\nInput: text\nModel: GLM-5.3-Flash\n")
-        with self.assertRaisesRegex(SystemExit, "supervised text tasks require"):
+        with self.assertRaisesRegex(SystemExit, "text tasks require"):
             metadata.resolve(self.task, ROOT / "glm/model_policy.json", "codex")
 
 

@@ -15,6 +15,15 @@ assigned bounded task and write its report. Never create your own follow-up
 agents/tasks to compensate for the controller being absent. Operational
 supervisor/quota and exact cleanup guards remain active.
 
+Standing cadence: delegate, verify startup once, wait for the report. Do not
+expect Codex or native subagents to duplicate your assigned work while you run.
+Complete the bounded task and write the exact requested report with evidence.
+A status question permits one concise check, not continuous supervision.
+Requests to finish or fix the task do not alone select supervised mode. Even in
+supervised mode, the default is report-first review and correction; continuous
+Codex monitoring requires an explicit user request. An already authorized review
+may resume when the completed report arrives. No report expands authority.
+
 Only explicit supervised mode uses the controller correction loop. In either
 mode, SUCCESS is a candidate result, never independent acceptance or deployment.
 
@@ -33,12 +42,12 @@ mode, SUCCESS is a candidate result, never independent acceptance or deployment.
 - Application-specific rules override this generic policy. For Darkhaven,
   source, Git operations, and tests stay on the VPS through the canonical
   gateway; never create or run a local application stand.
-- Use GLM-5.3 for every task, complexity, and input type in this workspace.
-  This includes source work, testing, review, and screenshot/image inspection.
-  `auto` also selects GLM-5.3; do not switch to Flash or an older model.
-- Inspect permitted screenshots yourself with the available image tools;
-  a separate visual worker is not required. Record the inspected image paths
-  and whether they were opened. If tools cannot open them, report the gap.
+- Use GLM-5.3 for text/code and GLM-5.3-Flash for screenshots/VNC at every
+  complexity. `Input: image`, `Input: vnc`, or `Interface: vnc` is a hard Flash
+  route. Do not run a visual task under ordinary GLM-5.3 or an older model.
+- Inspect permitted screenshots yourself with the available image tools. Record
+  the actual model ID, inspected paths, and whether pixels were rendered. If the
+  tool returns only an upload receipt or URL, report the gap.
 - Treat visual findings as bounded evidence. They do not replace Codex's
   independent source and final-diff review, and a screenshot verdict alone
   does not prove functional behavior.
@@ -64,6 +73,11 @@ mode, SUCCESS is a candidate result, never independent acceptance or deployment.
   link, and report path stable in progress and final reports so the controller
   can follow one task through completion. Return compact progress; provide full
   logs only for a concrete failure or when the controller requests them.
+- Temporary provider/network failures must recover under the operational
+  supervisor with backoff, preserving the task, completed artifacts and attempt
+  evidence. Do not turn a temporary 500/502/503/504 or connection failure into
+  a terminal task report. Recovery never authorizes blindly repeating GUI or
+  financial operations: reconcile actual state and use durable guards first.
 - A runner retry of the same failed attempt must preserve its scope and inputs
   and must be safe to repeat. Do not blindly repeat a command that may have
   produced filesystem, network, service, data, or other external side effects.

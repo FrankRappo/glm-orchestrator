@@ -23,7 +23,11 @@ data = {
     "config": {
         "providerConfigRules": {"providerRules": []},
         "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
-        "defaultModelSelection": {"providerId": provider, "modelId": model},
+        "defaultModelSelection": {
+            "providerId": provider, "modelId": model,
+            **({"options": {"reasoningLevel": "max"}}
+               if model.startswith("GLM-5.3") else {}),
+        },
     },
 }
 os.makedirs(os.path.dirname(path), exist_ok=True)

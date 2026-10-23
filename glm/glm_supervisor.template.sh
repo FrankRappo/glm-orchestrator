@@ -30,10 +30,17 @@ POLL="${POLL:-10}"
 RATE_LIMIT_WAIT_SECONDS="${RATE_LIMIT_WAIT_SECONDS:-900}"
 RATE_LIMIT_MAX_WAITS="${RATE_LIMIT_MAX_WAITS:-32}"
 NOTIFY_CMD="${NOTIFY_CMD:-}"
+# Provider recovery is enabled by default. Financial/UI side effects still need
+# durable guards; a model retry is never permission to replay an operation.
+GLM_TRANSIENT_RETRY_SAFE="${GLM_TRANSIENT_RETRY_SAFE:-1}"
+GLM_TRANSIENT_MAX_RETRIES="${GLM_TRANSIENT_MAX_RETRIES:-0}" # 0: unlimited
+GLM_TRANSIENT_RETRY_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_DELAY_SECONDS:-10}"
+GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS:-60}"
 
 STATUS_RE='^[[:space:]]*[*#`>[:space:]]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL)[*`[:space:]]*$'
 RATE_LIMIT_RE='quota|usage cap|usage limit|rate.?limit|limit reached|too many requests|429|insufficient_quota|resets? at|resetAt'
 AUTH_RE='sign in|not authenticated|authentication|unauthorized|coding_plan_required|select a model before continuing|model creation failed'
+TRANSIENT_RE='statusCode:[[:space:]]*(500|502|503|504)|HTTP[^[:alnum:]]*(500|502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|ECONNRESET|ETIMEDOUT|socket hang up|error=http_response_incomplete'
 
 mkdir -p "$STATE_DIR" "$(dirname "$REPORT")" "$(dirname "$LOG")"
 SLOG="$LOG.supervisor"
@@ -51,19 +58,32 @@ report_status(){
 write_blocked_report(){
   local reason="$1"
   [[ -n "$(report_status)" ]] && return 0
-  if [[ -s "$REPORT" ]]; then
-    local previous
-    previous="$(mktemp "$REPORT.incomplete.XXXXXX")" || return 1
-    cp -- "$REPORT" "$previous" || return 1
-  fi
-  local tmp="$REPORT.tmp.$$"
-  {
-    printf '# %s blocked\n\n' "$TASK"
-    printf '%s\n\n' "$reason"
-    printf 'See `%s` and `%s` for evidence.\n\n' "$LOG" "$SLOG"
-    printf 'STATUS: BLOCKED\n'
-  } > "$tmp"
-  mv "$tmp" "$REPORT"
+  # Isolated workers may write only the pre-created report inode, not siblings
+  # in its controller-owned directory. Keep incomplete evidence in STATE_DIR.
+  python3 - "$REPORT" "$STATE_DIR" "$TASK" "$reason" "$LOG" "$SLOG" <<'PYREPORT'
+import os, stat, sys, tempfile
+path, state, task, reason, log, slog = sys.argv[1:]
+fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+with os.fdopen(fd, 'r+b') as report:
+    info = os.fstat(report.fileno())
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        raise RuntimeError('unsafe report inode')
+    if info.st_size:
+        prefix = os.path.basename(path)+'.incomplete.'
+        try:
+            previous, _ = tempfile.mkstemp(prefix=prefix, dir=os.path.dirname(path))
+        except PermissionError:
+            previous, _ = tempfile.mkstemp(prefix=prefix, dir=state)
+        with os.fdopen(previous, 'wb') as backup:
+            while chunk := report.read(65536):
+                backup.write(chunk)
+    text = f'# {task} blocked\n\n{reason}\n\nSee `{log}` and `{slog}` for evidence.\n\nSTATUS: BLOCKED\n'
+    report.seek(0)
+    report.truncate()
+    report.write(text.encode('utf-8'))
+    report.flush()
+    os.fsync(report.fileno())
+PYREPORT
 }
 
 terminate_tree(){
@@ -129,15 +149,19 @@ newest_mtime_under(){
 
 rate_limited(){ tail -n 120 "$LOG" 2>/dev/null | grep -aiE "$RATE_LIMIT_RE" | tail -1; }
 auth_blocked(){ tail -n 120 "$LOG" 2>/dev/null | grep -aiE "$AUTH_RE" | tail -1; }
+attempt_log(){ tail -c "+$((attempt_log_offset + 1))" "$LOG" 2>/dev/null; }
 
 attempt=0
 rate_waits=0
+transient_waits=0
+ordinary_failures=0
 while :; do
   attempt=$((attempt + 1))
   started=$(date +%s)
   printf '%s\n' "$started" > "$STATE_DIR/$TASK.started"
   : > "$STATE_DIR/$TASK.running"
   log "launch attempt=$attempt task=$TASK model=$MODEL_ID mode=$MODE"
+  attempt_log_offset="$(stat -c %s "$LOG" 2>/dev/null || echo 0)"
 
   setsid env \
     PROJECT_DIR="$PROJECT_DIR" TASK="$TASK" TASK_FILE="$TASK_FILE" REPORT="$REPORT" \
@@ -145,6 +169,7 @@ while :; do
     MODE="$MODE" CONTROLLER="$CONTROLLER" GLM_BIN="$GLM_BIN" \
     USAGE_LEDGER="${USAGE_LEDGER:-$(dirname "$LOG")/glm_usage.jsonl}" \
     GLM_DISALLOWED_TOOLS="${GLM_DISALLOWED_TOOLS:-}" \
+    GLM_SUPERVISOR_ATTEMPT="$attempt" \
     bash "$LAUNCHER" &
   pid=$!
   printf '%s\n' "$pid" > "$STATE_DIR/$TASK.pid"
@@ -182,6 +207,11 @@ while :; do
   done
   wait "$pid" 2>/dev/null
   rc=$?
+  # An exited CLI may leave tool/MCP descendants behind. Finish that exact
+  # attempt's process group before another model can act on the same task.
+  if kill -0 -- "-$pid" 2>/dev/null; then
+    terminate_tree "$pid"
+  fi
   rm -f "$STATE_DIR/$TASK.running" "$STATE_DIR/$TASK.pid"
   : > "$STATE_DIR/$TASK.finished"
 
@@ -192,7 +222,7 @@ while :; do
     exit 1
   fi
 
-  auth_line="$(auth_blocked || true)"
+  auth_line="$(attempt_log | grep -aiE "$AUTH_RE" | tail -1 || true)"
   if [[ -n "$auth_line" ]]; then
     log "credential/configuration blocker: $auth_line"
     write_blocked_report "GLM CLI is not authenticated or has no usable model: $auth_line"
@@ -200,7 +230,7 @@ while :; do
     exit 2
   fi
 
-  limit_line="$(rate_limited || true)"
+  limit_line="$(attempt_log | grep -aiE "$RATE_LIMIT_RE" | tail -1 || true)"
   if [[ -n "$limit_line" ]]; then
     rate_waits=$((rate_waits + 1))
     if (( rate_waits > RATE_LIMIT_MAX_WAITS )); then
@@ -214,7 +244,24 @@ while :; do
     continue
   fi
 
-  if (( attempt > MAX_RESPAWN )); then
+  transient_line="$(attempt_log | grep -aiE "$TRANSIENT_RE" | tail -1 || true)"
+  if [[ "$GLM_TRANSIENT_RETRY_SAFE" == 1 && -n "$transient_line" ]] && (( rc != 0 )); then
+    transient_waits=$((transient_waits + 1))
+    if (( GLM_TRANSIENT_MAX_RETRIES > 0 && transient_waits > GLM_TRANSIENT_MAX_RETRIES )); then
+      write_blocked_report "Transient provider retry cap reached after $transient_waits failures."
+      log "transient provider retry cap reached"
+      exit 1
+    fi
+    exponent=$(( transient_waits - 1 )); (( exponent > 6 )) && exponent=6
+    delay=$(( GLM_TRANSIENT_RETRY_DELAY_SECONDS * (1 << exponent) ))
+    (( delay > GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS )) && delay=$GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS
+    log "transient provider failure rc=$rc; retry=$transient_waits backoff=${delay}s; scope and task unchanged"
+    sleep "$delay"
+    continue
+  fi
+
+  ordinary_failures=$((ordinary_failures + 1))
+  if (( ordinary_failures > MAX_RESPAWN )); then
     reason="GLM worker failed without a terminal report after $attempt attempts (last rc=$rc"
     [[ "$timed_out" == 1 ]] && reason+=", runtime timeout"
     [[ "$hang_killed" == 1 ]] && reason+=", hang timeout ${GLM_HANG_TIMEOUT_SECONDS}s"

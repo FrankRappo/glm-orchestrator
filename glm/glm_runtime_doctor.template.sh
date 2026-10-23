@@ -39,7 +39,8 @@ python3 - "$config" "$provider" "$model" <<'PY'
 import json, sys
 json.dump({"schemaVersion":1,"config":{"providerConfigRules":{"providerRules":[]},
 "modelConfigRules":{"providerModelRules":[],"manualProviderModelRules":[]},
-"defaultModelSelection":{"providerId":sys.argv[2],"modelId":sys.argv[3]}}},
+"defaultModelSelection":{"providerId":sys.argv[2],"modelId":sys.argv[3],
+"options":{"reasoningLevel":"max"}}}},
 open(sys.argv[1],"w",encoding="utf-8"),indent=2)
 PY
 chmod 0644 "$config"

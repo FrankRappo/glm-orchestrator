@@ -7,15 +7,37 @@ the user. If startup is not yet known, wait only for the initial start/failure
 signal; do not launch duplicates. If startup fails, report the failure rather
 than claiming success.
 
-After a verified start, do not keep polling status, read the result, review
+## Default cadence: delegate and wait for the report
+
+The owner's standing preference is to save Codex tokens by letting GLM do the
+assigned work. Prepare a bounded task, verify actual model execution once, then
+return control and leave GLM running independently. A gate, broker, queued task,
+or selected model configuration alone is not startup evidence.
+
+After startup, do not duplicate GLM's investigation or implementation in Codex
+or native subagents. Prefer a lightweight completion notification over repeated
+LLM polling. Return to task-level work when a completed report is available and
+its review is already authorized, or when the user makes a new request. A status
+question authorizes one compact check; it does not authorize another monitoring,
+correction, or parallel implementation loop.
+
+Requests to "finish", "fix", or "solve the problem" define the outcome; they do
+not by themselves request continuous Codex supervision. Even in supervised mode,
+wait for the report before reviewing or correcting work unless the user
+explicitly requests continuous monitoring. Operational supervisors, quota
+admission, isolation, and credential/process cleanup remain active throughout.
+Report availability does not expand review, integration, or deployment authority.
+
+In launch-only mode, after a verified start, do not keep polling status, read the result, review
 patches, run QA, issue corrections, or launch follow-up tasks without a new user
 request. GLM continues its already assigned bounded task independently. Do not
 stop the worker when returning control. Its operational supervisor, quota controls, and exact credential/process
 cleanup guards remain active;
 these are infrastructure responsibilities, not ongoing Codex supervision.
 
-Use **supervised** mode only when the user explicitly requests monitoring,
-review/correction, or completion of the entire work. The controller workflow
+Use **supervised** mode only when the user explicitly requests Codex monitoring
+or independent review/correction through acceptance. Merely assigning GLM the
+complete outcome does not select this mode. The controller workflow
 and correction loop below apply only in that mode. In launch-only mode a worker
 result remains an unreviewed candidate: no automatic acceptance, integration,
 deployment, or claim that the application task is complete.
@@ -51,18 +73,16 @@ network access or remote production credentials.
 
 ## Role and input routing
 
-This workspace uses `Model: GLM-5.3` for every task and complexity, including
-source exploration, implementation, tests, fixes, review, and screenshots.
-`Model: auto` and `inherit` also resolve to GLM-5.3. The workspace policy rejects
-other task models rather than silently switching to Flash or an older model.
-Use `Input: text` for source work and `Input: image` for screenshot/image work;
-input type does not change the model.
+Model routing is invariant across complexity and controller type. `Input: text`
+requires GLM-5.3. `Input: image`, `Input: vnc`, or `Interface: vnc` requires
+GLM-5.3-Flash. `Model: auto` and `inherit` resolve from that input route; an
+explicit incompatible model is rejected before launch rather than silently
+changed. Older models remain unsupported.
 
-GLM-5.3 can inspect screenshots itself using the image tools available within
-the task boundary. Provide the permitted screenshot paths or capture target;
-a separate Flash worker is not required. Report whether the image was actually
-opened and which files were inspected; if image tools are unavailable, report
-that gap rather than claiming a visual check from text alone.
+Provide permitted screenshot paths or the capture target. Record the actual
+model ID, whether the image was opened, and which files were inspected. If the
+image tool cannot render pixels, report that gap rather than claiming a visual
+check from an upload receipt or URL.
 
 Keep visual interpretation bounded to visual evidence. A screenshot
 finding does not replace Codex's independent source and final-diff review, and
@@ -70,6 +90,17 @@ a screenshot verdict alone does not prove functional behavior. Codex still
 runs the applicable trusted behavioral checks before acceptance.
 
 ## Launch and credential lifetime
+
+Always keep the operational supervisor around the model process. Temporary
+provider/network failures recover by default with 10/20/40/60-second backoff
+(60-second ceiling), without an elapsed-time cutoff. The recovery budget is
+separate from `Max-Respawn` / `No-Respawn` for ordinary worker failures. Each
+attempt keeps its response artifact. A retry keeps the same task and evidence;
+financial/UI operations require durable guards and read-only reconciliation
+before any repeat. An unknown outcome must not be retried as an operation.
+Authentication/configuration failures, quota policy, and terminal task reports
+keep their existing handling. `GLM_TRANSIENT_MAX_RETRIES` can explicitly set a
+positive recovery cap; its default zero permits continued provider recovery.
 
 Keep the controller task originals, checks, queue state, logs, model configuration,
 and directory parents protected from worker writes. A root controller must not
@@ -138,11 +169,13 @@ Launch, planning completion, a worker-stage exit, and `STATUS: SUCCESS` are
 intermediate lifecycle events, not final handoffs.
 
 At launch, retain stable pointers to the controller task, worker session or
-attempt, baseline, and report path. Await or poll that same attempt at a bounded
-interval. Do not start a duplicate worker merely because the first attempt is
-quiet or still running. During progress checks, read compact status and report
-updates; retrieve full logs only to diagnose a concrete failure or missing
-evidence. An inexpensive external monitor may wait and notify the controller,
+attempt, baseline, and report path. Await the completed report from that same
+attempt, preferably through a lightweight completion notification. Poll through
+Codex only when the user explicitly requests continuous monitoring; a standalone
+status request permits one compact check. Do not start a duplicate worker merely
+because the first attempt is quiet or still running. Retrieve full logs only to
+diagnose a concrete failure or missing evidence. An inexpensive external monitor
+may wait and notify the controller,
 but it cannot accept or certify the result, create correction scope, or silently
 acquire broader filesystem, network, credential, deployment, or production
 authority.

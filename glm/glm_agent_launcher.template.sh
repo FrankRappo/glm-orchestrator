@@ -55,6 +55,16 @@ save tokens.
 
 --- TASK BELOW ---
 PREAMBLE
+  if (( ${GLM_SUPERVISOR_ATTEMPT:-1} > 1 )); then
+    cat <<'RECOVERY'
+This is recovery of the SAME task after a runner/provider failure. Read existing
+artifacts and checkpoints first; retain completed work and report prior failures.
+Never blindly replay clicks, payments, settlement, Z reports or other externally
+visible operations. Establish actual state and prove a previous operation was
+not executed before retrying it. If uncertain, collect read-only evidence and
+report the ambiguity. An adapter refusal is not permission to weaken its guards.
+RECOVERY
+  fi
   if [[ "$CONTROLLER" == codex ]]; then
     cat "$ROOT/codex_supervised_policy.md"
     printf '\n--- CONTROLLER TASK ---\n'
@@ -62,6 +72,14 @@ PREAMBLE
   cat "$TASK_FILE"
 } > "$tmp_prompt"
 mv "$tmp_prompt" "$PROMPT_FILE"
+
+# Enforce the same routing even when the launcher is called outside the queue.
+resolved_model="$(python3 "$ROOT/task_metadata.py" --controller "$CONTROLLER" "$TASK_FILE" --json \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["model_id"])')"
+if [[ "${resolved_model,,}" != "${MODEL_ID,,}" ]]; then
+  echo "Model routing mismatch: task requires $resolved_model, launcher requested $MODEL_ID" >&2
+  exit 2
+fi
 
 python3 - "$PROVIDER_CONFIG" "$PROVIDER_ID" "$MODEL_ID" <<'PY'
 import json, sys
@@ -71,7 +89,10 @@ data = {
     "config": {
         "providerConfigRules": {"providerRules": []},
         "modelConfigRules": {"providerModelRules": [], "manualProviderModelRules": []},
-        "defaultModelSelection": {"providerId": provider, "modelId": model},
+        "defaultModelSelection": {
+            "providerId": provider, "modelId": model,
+            "options": {"reasoningLevel": "max"},
+        },
     },
 }
 with open(path + ".tmp", "w", encoding="utf-8") as handle:
@@ -101,11 +122,12 @@ fi
 
 printf '[%s] launch task=%s controller=%s provider=%s model=%s requested_mode=%s effective_mode=%s\n' \
   "$(date '+%F %T')" "$TASK" "$CONTROLLER" "$PROVIDER_ID" "$MODEL_ID" "$MODE" "$EFFECTIVE_MODE" >> "$LOG"
-response_file="$STATE_DIR/$TASK.response.json"
+response_file="$STATE_DIR/$TASK.attempt-${GLM_SUPERVISOR_ATTEMPT:-1}.response.json"
 set +e
 "$GLM_BIN" "${args[@]}" --prompt "$prompt" > "$response_file" 2>> "$LOG"
 rc=$?
 set -e
+cp -- "$response_file" "$STATE_DIR/$TASK.response.json"
 cat "$response_file" >> "$LOG"
 printf '\n' >> "$LOG"
 
