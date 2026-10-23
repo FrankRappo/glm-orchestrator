@@ -53,4 +53,19 @@ exit 0
         rc,n,_,log=self.run_case('echo "Bad Gateway" >> "$LOG"; exit 1',{'GLM_TRANSIENT_RETRY_SAFE':'0'})
         self.assertEqual((rc,n),(1,1),log)
 
+    def test_cookie_containing_429_is_not_a_quota_error(self):
+        rc,n,_,log=self.run_case(
+            'echo "statusCode: 502" >> "$LOG"; '
+            'echo "set-cookie: cdn_sec_tc=a3b5f217927968584293334e" >> "$LOG"; exit 1',
+            {'RATE_LIMIT_WAIT_SECONDS':'0'})
+        self.assertEqual((rc,n),(0,2),log)
+        self.assertIn('transient provider failure',log)
+        self.assertNotIn('quota marker',log)
+
+    def test_actual_http_429_keeps_quota_wait(self):
+        rc,n,_,log=self.run_case('echo "statusCode: 429" >> "$LOG"; exit 1',
+                                {'RATE_LIMIT_WAIT_SECONDS':'0'})
+        self.assertEqual((rc,n),(0,2),log)
+        self.assertIn('quota marker',log)
+
 if __name__=='__main__': unittest.main()

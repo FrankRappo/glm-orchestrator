@@ -38,7 +38,7 @@ GLM_TRANSIENT_RETRY_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_DELAY_SECONDS:-10}"
 GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS:-60}"
 
 STATUS_RE='^[[:space:]]*[*#`>[:space:]]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL)[*`[:space:]]*$'
-RATE_LIMIT_RE='quota|usage cap|usage limit|rate.?limit|limit reached|too many requests|429|insufficient_quota|resets? at|resetAt'
+RATE_LIMIT_RE='quota|usage cap|usage limit|rate.?limit|limit reached|too many requests|statusCode:[[:space:]]*429([^0-9]|$)|HTTP(/[0-9.]+)?[[:space:]:]+429([^0-9]|$)|insufficient_quota|resets? at|resetAt'
 AUTH_RE='sign in|not authenticated|authentication|unauthorized|coding_plan_required|select a model before continuing|model creation failed'
 TRANSIENT_RE='statusCode:[[:space:]]*(500|502|503|504)|HTTP[^[:alnum:]]*(500|502|503|504)|Bad Gateway|Service Unavailable|Gateway Timeout|ECONNRESET|ETIMEDOUT|socket hang up|error=http_response_incomplete'
 
