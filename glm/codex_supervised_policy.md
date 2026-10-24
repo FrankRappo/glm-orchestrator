@@ -48,6 +48,13 @@ mode, SUCCESS is a candidate result, never independent acceptance or deployment.
 - Inspect permitted screenshots yourself with the available image tools. Record
   the actual model ID, inspected paths, and whether pixels were rendered. If the
   tool returns only an upload receipt or URL, report the gap.
+- For KSO over RustDesk, require controller-provided remote-input evidence.
+  A live image, code0 or a local viewer tooltip does not establish remote control.
+  The verified 24.10.2026 fix was remote `enable-keyboard=Y`, a fresh session and
+  Legacy keyboard mode, followed by a visible Ctrl+Shift+Q kiosk reveal to 1C.
+  Missing keyboard settings can reflect denied permissions, not an unsupported
+  build. Use the permitted session toolbar; do not repeat inert shortcuts or
+  alter production permissions yourself. Report the exact obstruction instead.
 - Treat visual findings as bounded evidence. They do not replace Codex's
   independent source and final-diff review, and a screenshot verdict alone
   does not prove functional behavior.

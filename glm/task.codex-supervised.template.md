@@ -29,6 +29,9 @@ opened, and any unavailable tool capability.
 - Worker session/attempt ID: `<attempt-id-or-pending>`
 - Startup evidence: `<actual worker/model start, or startup failure>`
 - Report path: `reports/report_T<NN>.md`
+- VNC input evidence (for KSO GUI): `<controller-verified remote permissions,
+  keyboard mode, fresh screenshot and visible nonfinancial response; code0/local
+  tooltips are insufficient; required session-toolbar controls are available>`
 - Default cadence: delegate, verify actual model execution once, wait for the completed report.
 - Completion notification: `<lightweight report-ready signal, if available>`
 - Parent attempt/report: `<if explicitly assigned a correction>`

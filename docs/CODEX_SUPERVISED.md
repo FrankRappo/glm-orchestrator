@@ -89,6 +89,56 @@ finding does not replace Codex's independent source and final-diff review, and
 a screenshot verdict alone does not prove functional behavior. Codex still
 runs the applicable trusted behavioral checks before acceptance.
 
+## VNC / RustDesk input before KSO tasks
+
+Seeing a live image does not prove that mouse or keyboard input reaches the cash
+machine. Before delegating GUI work, the controller checks input permissions and
+records a visible, nonfinancial response on the remote screen. Viewer tooltips,
+opening a local menu, `windowactivate`, and an input command returning code0 are
+not that proof. An inert click on an empty canvas cannot establish keyboard focus.
+
+The verified KSO1 incident on 24.10.2026 had two relevant settings: both the
+service and cashier-user `RustDesk2.toml` contained `enable-keyboard = 'N'`, and
+the Linux viewer used Map mode. Ctrl+Shift+Q did nothing. The keyboard-mode menu
+was absent while remote input was denied; that was not evidence of a missing
+feature in the client build.
+
+The successful recovery was:
+
+1. The controller backed up the actual service and user configs, then enabled
+   input in the already-authorized service window using the installed RustDesk
+   CLI (`rustdesk.exe --option enable-keyboard Y`). It verified the resulting
+   configuration; the command's exit alone was insufficient.
+2. The controller reconnected its own viewer session. In this incident it also
+   restarted only the RustDesk service to reload permissions; Electron and 1C
+   process IDs remained unchanged. A service restart is a conditional recovery
+   step, not a mandatory action on every launch. No WSL/host reboot is involved.
+3. The keyboard icon became available in the session toolbar. The controller
+   selected **Legacy** instead of **Map** in this Linux viewer, clicked inside
+   the remote canvas and sent **Ctrl+Shift+Q once**. A fresh screenshot showed
+   the 1C window underneath: kiosk minimization was actually verified.
+
+After that, the KSO operator procedure uses Win+D or the visible remote Windows
+Show Desktop strip to hide 1C. Win/Super may be intercepted locally; choose
+coordinates from a fresh image. Ctrl+Shift+Q is a toggle: another press can bring
+the kiosk back. Do not transfer old native-screen coordinates into a scaled viewer.
+
+The task's controls must allow the relevant RustDesk toolbar and remote taskbar,
+including hover and ordinary navigation. A blanket top/bottom pixel cutoff had
+prevented the earlier worker from applying the documented recovery. Keep exact
+cash/viewer identity, actual Flash selection, fresh-frame and no-replay checks;
+do not allow another peer, a local shell, or unrelated host controls.
+
+Workers receive the controller's permission/input evidence. They do not receive
+production credentials or change remote permissions themselves. If a shortcut
+has no visible effect, stop repeating it and report the transport obstruction.
+Provider 502 errors are a separate issue: retries cannot enable remote input.
+
+This incident verified kiosk minimization only. The owner then requested a stop;
+shift 251 remained open and no settlement, Z report or shift closure was started
+as part of the input repair. Evidence is retained locally under
+`/work/kso/backups/kso1_rmk_close_diag_20261022/manual_vnc_20261024/`.
+
 ## Launch and credential lifetime
 
 Always keep the operational supervisor around the model process. Temporary
