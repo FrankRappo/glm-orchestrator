@@ -141,12 +141,14 @@ PY
     fi
     [[ -f "$PROJECT_DIR/orch/launch.json" ]] && cat "$PROJECT_DIR/orch/launch.json"
     for report in "$PROJECT_DIR"/reports/report_*.md; do
-      [[ -f "$report" ]] || continue
-      verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report" 2>/dev/null)" || true
-      case "$verdict" in
-        SUCCESS|FAIL|BLOCKED|PARTIAL) status="STATUS: $verdict" ;;
-        UNFINISHED) status="NO FINAL REPORT — in-progress placeholder stub" ;;
-        *) status="NO TERMINAL STATUS" ;;
+      [[ -e "$report" || -L "$report" ]] || continue
+      verdict=""; rc=0
+      verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report")" || rc=$?
+      case "$rc:$verdict" in
+        0:SUCCESS|0:FAIL|0:BLOCKED|0:PARTIAL) status="STATUS: $verdict" ;;
+        1:UNFINISHED) status="NO FINAL REPORT — in-progress placeholder stub" ;;
+        1:NONE) status="NO TERMINAL STATUS" ;;
+        *) status="CLASSIFIER ERROR — completion unknown; retry blocked" ;;
       esac
       printf '%s: %s\n' "$(basename "$report")" "$status"
     done

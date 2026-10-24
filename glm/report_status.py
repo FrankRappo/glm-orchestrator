@@ -19,9 +19,10 @@ Contract (docs/REPORT_STATUS_AND_RECOVERY.md):
 
 A finished report that mentions "placeholder" or "in progress" inside a
 substantive body stays terminal. Bare legacy ``STATUS:`` markers without the
-placeholder marker stay terminal. The report is read through O_NOFOLLOW on a
-regular inode with a single link: symlinked/hardlinked report leaves are
-refused rather than classified.
+placeholder marker stay terminal. Reports are opened nonblocking with
+O_NOFOLLOW and must be regular single-link inodes; FIFOs and linked leaves are
+refused rather than classified. Oversized reports retain terminal evidence
+from a bounded tail or fail closed when that tail has no STATUS.
 """
 
 from __future__ import annotations
@@ -32,23 +33,64 @@ import re
 import stat
 import sys
 
-MAX_BYTES = 1 << 20  # reports are small; refuse to scan unbounded files
+MAX_BYTES = 1 << 20  # bound oversized-report scans to the terminal tail
 
 STATUS_RE = re.compile(
     r"^\s*[*#`>\s]*STATUS:\s*(SUCCESS|FAIL|BLOCKED|PARTIAL)[*`\s]*$")
 PLACEHOLDER_RE = re.compile(
     r"\breport\s+placeholder\b[^\n]{0,120}?[\u2014\u2013\-:(]\s*\(?\bin\s+progress\)?\s*[.!…]{0,3}\s*$",
     re.IGNORECASE)
+HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$")
+GENERIC_HEADINGS = {
+    "blockers",
+    "dependencies",
+    "evidence",
+    "findings",
+    "issues",
+    "next",
+    "next steps",
+    "notes",
+    "open issues",
+    "progress",
+    "remaining",
+    "remaining work",
+    "report",
+    "result",
+    "results",
+    "status",
+    "summary",
+    "todo",
+    "todos",
+    "verification",
+}
 
 
 def _meaningful_body(lines: list[str]) -> bool:
-    """True when any line carries content beyond headings/rules/STATUS."""
+    """True when any line carries content beyond a clear skeleton.
+
+    Headings are preserved as findings when they describe actual outcomes.
+    Only generic section labels and report-title forms are treated as
+    skeleton structure; this avoids discarding a real heading-only PARTIAL.
+    """
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
         if STATUS_RE.match(stripped):
             continue
+        heading = HEADING_RE.match(stripped)
+        if heading:
+            if PLACEHOLDER_RE.search(stripped):
+                continue
+            label = re.sub(r"[*_`]", "", heading.group(1))
+            label = label.strip(" \t:.-").lower()
+            label = re.sub(r"\s+", " ", label)
+            if not label or label in GENERIC_HEADINGS:
+                continue
+            if re.fullmatch(r"(?:t\d+\s+)?(?:completion\s+)?report(?:\s+for\s+t\d+)?",
+                            label):
+                continue
+            return True
         if stripped.startswith("#"):
             continue
         if set(stripped) <= set("-=*_~ |"):
@@ -76,13 +118,18 @@ def read_report(path: str) -> str | None:
 
     A missing file is simply no report (empty text -> NONE), while symlinks,
     shared inodes and other unsafe leaves are refused without a verdict.
+    O_NONBLOCK ensures a FIFO is inspected and rejected rather than opened
+    indefinitely. Oversized files are scanned through a bounded tail; a
+    terminal STATUS there wins over any earlier status, while an unknown tail
+    is a classifier failure rather than NONE.
     """
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
         return ""
     except OSError as exc:
-        print(f"report_status: cannot open {path}: {exc}", file=sys.stderr)
+        print(f"report_status: refusing unsafe/unreadable report {path}: {exc}",
+              file=sys.stderr)
         return None
     try:
         info = os.fstat(fd)
@@ -90,12 +137,20 @@ def read_report(path: str) -> str | None:
             print(f"report_status: refusing non-regular or shared inode: {path}",
                   file=sys.stderr)
             return None
-        size = min(info.st_size, MAX_BYTES)
         with os.fdopen(fd, "rb", closefd=False) as handle:
-            data = handle.read(size)
+            if info.st_size > MAX_BYTES:
+                handle.seek(info.st_size - MAX_BYTES)
+            data = handle.read(MAX_BYTES)
     finally:
         os.close(fd)
-    return data.decode("utf-8", errors="replace")
+    text = data.decode("utf-8", errors="replace")
+    if info.st_size > MAX_BYTES and not any(
+            STATUS_RE.match(line) for line in text.splitlines()):
+        print(f"report_status: oversized report has no terminal STATUS in "
+              f"its bounded tail, refusing unknown completion: {path}",
+              file=sys.stderr)
+        return None
+    return text
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -86,12 +86,14 @@ report_file(){
 
 report_status(){
   # Terminal statuses only (shared classifier); a stub-only report behaves
-  # like a missing report: the task stays pending and can be relaunched.
-  local report="$1" verdict
-  [[ -f "$report" ]] || return 0
-  verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report" 2>/dev/null)" || true
-  case "$verdict" in
-    SUCCESS|FAIL|BLOCKED|PARTIAL) printf '%s\n' "$verdict" ;;
+  # like a missing report. ERROR means completion is unknown and must never
+  # launch, retry, finish, or declare ALL_DONE.
+  local report="$1" verdict rc=0
+  verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report")" || rc=$?
+  case "$rc:$verdict" in
+    0:SUCCESS|0:FAIL|0:BLOCKED|0:PARTIAL) printf '%s\n' "$verdict" ;;
+    1:UNFINISHED|1:NONE) return 0 ;;
+    *) printf 'ERROR\n' ;;
   esac
   return 0
 }
@@ -182,7 +184,10 @@ cleanup_finished(){
     task="$(basename "$file" .session)"; session="$(cat "$file" 2>/dev/null || true)"
     [[ -n "$session" ]] && tmux_alive "$session" && continue
     report="$(report_file "$task")"; status="$(report_status "$report")"
-    if [[ -n "$status" ]]; then
+    if [[ "$status" == ERROR ]]; then
+      log "report classifier failure task=$task report=$report; fail closed: state retained, no retry"
+      return 2
+    elif [[ -n "$status" ]]; then
       log "finished task=$task status=$status report=$report"
       printf -- '- [%s] %s — %s\n' "$([[ "$status" == SUCCESS ]] && echo x || echo '~')" "$task" "$status" >> "$ORCH_DIR/progress.md"
     else
@@ -193,10 +198,12 @@ cleanup_finished(){
 }
 
 all_terminal(){
-  local task report
+  local task report status
   for task in $(discover_tasks); do
     report="$(report_file "$task")"
-    [[ -n "$(report_status "$report")" ]] || return 1
+    status="$(report_status "$report")"
+    [[ "$status" == ERROR ]] && return 2
+    [[ -n "$status" ]] || return 1
   done
   return 0
 }
@@ -206,10 +213,30 @@ log "orchestrator start controller=$CONTROLLER author=$TASK_AUTHOR max_parallel=
 
 while :; do
   cleanup_finished
-  if all_terminal && (( $(active_count) == 0 )); then
+  cleanup_rc=$?
+  if (( cleanup_rc == 2 )); then
+    log "FATAL: report classifier failure; queue fail-closed"
+    exit 2
+  fi
+  all_done=0
+  if all_terminal; then
+    all_done=1
+  else
+    all_rc=$?
+    if (( all_rc == 2 )); then
+      log "FATAL: report classifier failure; queue fail-closed"
+      exit 2
+    fi
+  fi
+  if (( all_done == 1 )) && (( $(active_count) == 0 )); then
     # A fast worker can die between the first cleanup pass and this check.
     # Reap its state before a one-shot queue exits.
     cleanup_finished
+    cleanup_rc=$?
+    if (( cleanup_rc == 2 )); then
+      log "FATAL: report classifier failure; queue fail-closed"
+      exit 2
+    fi
     if [[ "$IDLE_EXIT" == 1 ]]; then
       touch "$REPORT_DIR/ALL_DONE"
       log "ALL DONE"
@@ -221,7 +248,13 @@ while :; do
   for task in $(discover_tasks); do
     (( $(active_count) < MAX_PARALLEL )) || break
     tf="$(task_file "$task")"; [[ -f "$tf" ]] || continue
-    [[ -n "$(report_status "$(report_file "$task")")" ]] && continue
+    report="$(report_file "$task")"
+    status="$(report_status "$report")"
+    if [[ "$status" == ERROR ]]; then
+      log "report classifier failure task=$task report=$report; fail closed: no worker launch"
+      exit 2
+    fi
+    [[ -n "$status" ]] && continue
     session="$(session_name "$task")"; tmux_alive "$session" && continue
     start_task "$task" || true
   done

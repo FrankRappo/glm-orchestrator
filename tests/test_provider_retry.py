@@ -199,4 +199,64 @@ exit 0
         self.assertNotIn('transient provider failure', r['log'])
         self.assertIn('STATUS: BLOCKED', r['report'])
 
+    def run_unsafe_case(self, report_setup, extra=None):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            (p/'run.log').write_text('')
+            (p/'count').write_text('0')
+            report = p/'report.md'
+            report_setup(p, report)
+            launcher = p/'launch.sh'
+            launcher.write_text('''#!/usr/bin/env bash
+n=$(cat "$PROJECT_DIR/count")
+n=$((n+1)); echo "$n" > "$PROJECT_DIR/count"
+echo "statusCode: 502 Bad Gateway" >> "$LOG"
+printf 'replayed unsafe report\\n\\nSTATUS: SUCCESS\\n' > "$REPORT"
+exit 1
+''')
+            env = dict(os.environ, TASK='T', PROJECT_DIR=tmp, TASK_FILE=str(p/'task.md'),
+                       REPORT=str(report), LOG=str(p/'run.log'), STATE_DIR=str(p/'state'),
+                       PROVIDER_ID='fixture', MODEL_ID='GLM-5.3', LAUNCHER=str(launcher),
+                       MAX_RESPAWN='0', POLL='0.01', GLM_TRANSIENT_RETRY_DELAY_SECONDS='0',
+                       GLM_TRANSIENT_MAX_RETRIES='2')
+            env.update(extra or {})
+            result = subprocess.run(['bash',str(ROOT/'glm/glm_supervisor.template.sh')],
+                                    env=env,capture_output=True,text=True,timeout=15)
+            return result.returncode, int((p/'count').read_text()), (p/'run.log.supervisor').read_text()
+
+    def test_unsafe_report_with_502_starts_no_worker(self):
+        def setup(p, report):
+            outside = p/'outside.md'
+            outside.write_text('unknown completion\n\nSTATUS: SUCCESS\n')
+            report.symlink_to(outside)
+        rc, count, log = self.run_unsafe_case(setup)
+        self.assertEqual((rc, count), (2, 0), log)
+        self.assertIn('report classifier failure', log)
+        self.assertIn('refusing', log.lower())
+
+    def test_missing_classifier_with_502_starts_no_worker(self):
+        def setup(p, report):
+            report.write_text('unknown completion\n\nSTATUS: SUCCESS\n')
+        rc, count, log = self.run_unsafe_case(
+            setup, {'REPORT_STATUS_HELPER': '/nonexistent/report_status.py'})
+        self.assertEqual((rc, count), (2, 0), log)
+        self.assertIn('report classifier failure', log)
+
+    def test_oversized_terminal_reports_are_not_replayed_after_502(self):
+        cases = (
+            (b'large prefix\n', b'\nSTATUS: SUCCESS\n'),
+            (b'STATUS: FAIL\n', b'\ncorrected findings\n\nSTATUS: SUCCESS\n'),
+        )
+        for prefix, terminal in cases:
+            with self.subTest(prefix=prefix, terminal=terminal):
+                def setup(p, report, prefix=prefix, terminal=terminal):
+                    with report.open('wb') as handle:
+                        handle.write(prefix)
+                        handle.write(b'x' * ((1 << 20) + 4096))
+                        handle.write(terminal)
+                rc, count, log = self.run_unsafe_case(setup)
+                self.assertEqual((rc, count), (0, 0), log)
+                self.assertIn('terminal report already present', log)
+                self.assertNotIn('transient provider failure', log)
+
 if __name__=='__main__': unittest.main()

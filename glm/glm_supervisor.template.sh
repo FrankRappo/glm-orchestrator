@@ -55,9 +55,14 @@ notify(){ [[ -n "$NOTIFY_CMD" ]] && $NOTIFY_CMD "$*" >/dev/null 2>&1 || true; }
 
 report_verdict(){
   # SUCCESS|FAIL|BLOCKED|PARTIAL (terminal) | UNFINISHED (placeholder stub) |
-  # NONE (no STATUS line) | empty (unreadable/unsafe report inode).
-  [[ -f "$1" ]] || { printf 'NONE\n'; return 0; }
-  python3 "$REPORT_STATUS_HELPER" classify "$1" 2>/dev/null || true
+  # NONE (no STATUS line) | ERROR (unsafe/unreadable/classification failure).
+  local verdict rc=0
+  verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$1")" || rc=$?
+  case "$rc:$verdict" in
+    0:SUCCESS|0:FAIL|0:BLOCKED|0:PARTIAL) printf '%s\n' "$verdict" ;;
+    1:UNFINISHED|1:NONE) printf '%s\n' "$verdict" ;;
+    *) printf 'ERROR\n' ;;
+  esac
 }
 
 report_status(){
@@ -72,7 +77,13 @@ report_status(){
 
 write_blocked_report(){
   local reason="$1"
-  [[ -n "$(report_status)" ]] && return 0
+  case "$(report_verdict "$REPORT")" in
+    SUCCESS|FAIL|BLOCKED|PARTIAL) return 0 ;;
+    ERROR)
+      log "report classifier failure task=$TASK report=$REPORT; fail closed: refusing report overwrite"
+      return 2
+      ;;
+  esac
   # Isolated workers may write only the pre-created report inode, not siblings
   # in its controller-owned directory. Keep incomplete evidence in STATE_DIR.
   python3 - "$REPORT" "$STATE_DIR" "$TASK" "$reason" "$LOG" "$SLOG" <<'PYREPORT'
@@ -171,6 +182,19 @@ rate_waits=0
 transient_waits=0
 ordinary_failures=0
 while :; do
+  preflight_verdict="$(report_verdict "$REPORT")"
+  case "$preflight_verdict" in
+    SUCCESS|FAIL|BLOCKED|PARTIAL)
+      log "terminal report already present task=$TASK status=$preflight_verdict; refusing worker launch"
+      [[ "$preflight_verdict" == SUCCESS ]] && exit 0
+      exit 1
+      ;;
+    ERROR)
+      log "report classifier failure task=$TASK report=$REPORT; fail closed: no worker launch"
+      notify "GLM task $TASK report status is unknown; refusing worker launch"
+      exit 2
+      ;;
+  esac
   attempt=$((attempt + 1))
   started=$(date +%s)
   printf '%s\n' "$started" > "$STATE_DIR/$TASK.started"
@@ -236,6 +260,11 @@ while :; do
       log "terminal report task=$TASK status=$verdict rc=$rc"
       [[ "$verdict" == SUCCESS ]] && exit 0
       exit 1
+      ;;
+    ERROR)
+      log "report classifier failure task=$TASK report=$REPORT after attempt=$attempt; fail closed: no retry or report overwrite"
+      notify "GLM task $TASK report status is unknown; refusing retry"
+      exit 2
       ;;
   esac
   if [[ "$verdict" == UNFINISHED ]]; then

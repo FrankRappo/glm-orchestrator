@@ -55,6 +55,11 @@ class ReportStatusTests(unittest.TestCase):
             capture_output=True, text=True, timeout=15)
         return result.returncode, result.stdout.strip()
 
+    def classify_path(self, path):
+        return subprocess.run(
+            ["python3", str(HELPER), "classify", str(path)],
+            capture_output=True, text=True, timeout=15)
+
     def test_incident_stub_is_unfinished(self):
         self.assertEqual(self.classify(text=INCIDENT_STUB), (1, "UNFINISHED"))
 
@@ -86,6 +91,20 @@ class ReportStatusTests(unittest.TestCase):
                 "STATUS: PARTIAL\n")
         self.assertEqual(self.classify(text=text), (0, "PARTIAL"))
 
+    def test_substantive_heading_findings_are_terminal(self):
+        for headings in (
+            ("## Oversized reports use a bounded terminal-evidence tail",
+             "## Classifier failures stop retries"),
+            ("## Correction: FIFO opens are nonblocking",
+             "## Unsafe report inodes preserve their original contents"),
+            ("### Evidence beyond the first MiB remains terminal",),
+        ):
+            with self.subTest(headings=headings):
+                text = ("# T14 report placeholder — in progress\n\n"
+                        + "\n\n".join(headings)
+                        + "\n\nSTATUS: PARTIAL\n")
+                self.assertEqual(self.classify(text=text), (0, "PARTIAL"))
+
     def test_success_fail_blocked_are_always_terminal(self):
         for status in ("SUCCESS", "FAIL", "BLOCKED"):
             with self.subTest(status=status):
@@ -103,6 +122,39 @@ class ReportStatusTests(unittest.TestCase):
     def test_missing_file_and_no_status_are_none(self):
         self.assertEqual(self.classify(text=None), (1, "NONE"))
         self.assertEqual(self.classify(text="still running\n"), (1, "NONE"))
+
+    def test_oversized_report_preserves_final_status_beyond_prefix(self):
+        path = self.dir / "report.md"
+        with path.open("wb") as report:
+            report.write(b"large report prefix\n")
+            report.write(b"x" * ((1 << 20) + 4096))
+            report.write(b"\nfindings retained\n\nSTATUS: SUCCESS\n")
+        result = self.classify_path(path)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "SUCCESS"))
+
+    def test_oversized_two_status_report_uses_final_status(self):
+        path = self.dir / "report.md"
+        with path.open("wb") as report:
+            report.write(b"STATUS: FAIL\n")
+            report.write(b"x" * ((1 << 20) + 4096))
+            report.write(b"\ncorrected findings\n\nSTATUS: PARTIAL\n")
+        result = self.classify_path(path)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "PARTIAL"))
+
+    def test_oversized_unknown_tail_fails_closed(self):
+        path = self.dir / "report.md"
+        path.write_bytes(b"STATUS: BLOCKED\n" + b"x" * ((1 << 20) + 4096))
+        result = self.classify_path(path)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout.strip(), "")
+        self.assertIn("oversized", result.stderr.lower())
+
+    def test_fifo_is_refused_without_blocking(self):
+        path = self.dir / "report.md"
+        os.mkfifo(path)
+        result = self.classify_path(path)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout.strip(), "")
 
     def test_symlinked_report_is_refused(self):
         outside = self.dir / "outside.md"
@@ -135,6 +187,20 @@ class ReportStatusTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout.strip(), "")
 
+    def test_status_display_makes_classifier_error_visible(self):
+        project = self.dir / "unsafe-project"
+        (project / "reports").mkdir(parents=True)
+        outside = self.dir / "outside.md"
+        outside.write_text("STATUS: SUCCESS\n")
+        (project / "reports" / "report_T01_cls.md").symlink_to(outside)
+        result = subprocess.run(
+            ["bash", str(ORCHESTRATE), "status", "--project", str(project)],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("report_T01_cls.md: CLASSIFIER ERROR", result.stdout)
+        self.assertIn("refusing", result.stderr.lower())
+        self.assertNotIn("NO TERMINAL STATUS", result.stdout)
+
 
 class SharedClassificationIntegrationTests(unittest.TestCase):
     """Queue- and status-level classification, without tmux/PTY/model calls.
@@ -162,6 +228,12 @@ class SharedClassificationIntegrationTests(unittest.TestCase):
         (project / "tasks" / "T01_cls.md").write_text(TASK_FIXTURE)
         (project / "reports" / report_name).write_text(report_text)
         return project
+
+    def cleanup_queue_session(self, project):
+        project_hash = hashlib.sha256(str(project).encode()).hexdigest()[:8]
+        session = f"glm_{project_hash}_T01_cls_sup"
+        self.addCleanup(subprocess.run, ["tmux", "kill-session", "-t", "=" + session],
+                        capture_output=True, text=True)
 
     def test_all_parsers_delegate_to_the_shared_classifier(self):
         # The incident happened because three independent parsers disagreed.
@@ -209,6 +281,54 @@ class SharedClassificationIntegrationTests(unittest.TestCase):
         log = (project / "logs" / "glm_orchestrator.log").read_text()
         self.assertNotIn("ALL DONE", log)
         self.assertNotIn("finished task=T01_cls", log)
+
+    def test_queue_fails_closed_on_unsafe_report(self):
+        project = self.make_project("report_T01_cls.md", "")
+        self.cleanup_queue_session(project)
+        report = project / "reports" / "report_T01_cls.md"
+        report.unlink()
+        outside = self.dir / "outside.md"
+        outside.write_text("STATUS: SUCCESS\n")
+        report.symlink_to(outside)
+        marker = project / "worker-started"
+        worker = self.dir / "recording-glm"
+        worker.write_text(f"#!/usr/bin/env bash\ntouch {marker!s}\nsleep 60\n")
+        worker.chmod(0o755)
+        result = subprocess.run(
+            ["timeout", "4s", "env", "PROJECT_DIR=" + str(project),
+             "IDLE_EXIT=1", "MAX_PARALLEL=1", "POLL=0.1",
+             "QUOTA_MONITOR=" + str(self.quota), "QUOTA_POLICY=enforce",
+             "GLM_BIN=" + str(worker),
+             "bash", str(ORCHESTRATOR)],
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists(), "queue launched a worker on an unsafe report")
+        self.assertFalse((project / "reports" / "ALL_DONE").exists())
+        self.assertEqual(outside.read_text(), "STATUS: SUCCESS\n")
+        log = (project / "logs" / "glm_orchestrator.log").read_text()
+        self.assertIn("report classifier failure", log)
+
+    def test_queue_fails_closed_when_classifier_is_missing(self):
+        project = self.make_project("report_T01_cls.md", "STATUS: SUCCESS\n")
+        self.cleanup_queue_session(project)
+        marker = project / "worker-started"
+        worker = self.dir / "recording-glm"
+        worker.write_text(f"#!/usr/bin/env bash\ntouch {marker!s}\nsleep 60\n")
+        worker.chmod(0o755)
+        missing = self.dir / "missing-report-status.py"
+        result = subprocess.run(
+            ["timeout", "4s", "env", "PROJECT_DIR=" + str(project),
+             "IDLE_EXIT=1", "MAX_PARALLEL=1", "POLL=0.1",
+             "QUOTA_MONITOR=" + str(self.quota), "QUOTA_POLICY=enforce",
+             "REPORT_STATUS_HELPER=" + str(missing),
+             "GLM_BIN=" + str(worker),
+             "bash", str(ORCHESTRATOR)],
+            capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists(), "queue launched a worker without a classifier")
+        self.assertFalse((project / "reports" / "ALL_DONE").exists())
+        log = (project / "logs" / "glm_orchestrator.log").read_text()
+        self.assertIn("report classifier failure", log)
 
     def test_queue_still_completes_when_reports_are_genuine(self):
         # Genuine terminal reports (including a real PARTIAL with substance)
