@@ -58,6 +58,18 @@ class SupervisedTests(unittest.TestCase):
         self.assertEqual(selected["modelId"], "GLM-5.3")
         self.assertEqual(selected["options"], {"reasoningLevel": "max"})
 
+    def test_every_controller_receives_vps_only_owner_policy(self):
+        for controller in ("manual", "glm", "codex"):
+            with self.subTest(controller=controller):
+                result = self.launch(controller)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                prompt = (self.root / "state/T01.prompt.md").read_text()
+                marker = "OWNER_VPS_ONLY_20261024 — ALL PROJECTS AND CONTROLLERS:"
+                self.assertEqual(prompt.count(marker), 1)
+                self.assertLess(prompt.index(marker), prompt.index("bounded fixture"))
+                self.assertIn("No WSL/Windows app stand", prompt)
+                self.assertIn("Keep SQL, dumps", prompt)
+
     def test_flash_launcher_declares_exact_model_and_reasoning_level(self):
         self.task.write_text("Model: GLM-5.3-Flash\nInput: image\nMode: yolo\n")
         result = self.launch("codex", model="GLM-5.3-Flash")
