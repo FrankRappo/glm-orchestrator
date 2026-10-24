@@ -53,6 +53,17 @@ Summarize evidence with commands, results, and relevant excerpts rather than
 pasting entire logs. Never skip acceptance gates or necessary diagnostics to
 save tokens.
 
+OWNER_VPS_ONLY_20261024 — ALL PROJECTS AND CONTROLLERS:
+Application runtimes, tests, fixtures, databases, containers, dependency installs,
+builds and browser QA run only on the authorized VPS. No WSL/Windows app stand,
+local database, app node_modules or .next; no local fallback. Keep SQL, dumps,
+backups, large archives/datasets/build artifacts on the VPS. Local work is thin
+orchestration, permitted edits/Git, small reports and bounded JPEG evidence only.
+Record the VPS target and remote app/artifact paths. If access is unavailable,
+recover the approved transport or report the blocker. Do not download big files
+or create a local stand without a specific newer owner exception. Preserve
+unrelated files/sessions and never shut down WSL/host without exact permission.
+
 --- TASK BELOW ---
 PREAMBLE
   if (( ${GLM_SUPERVISOR_ATTEMPT:-1} > 1 )); then
