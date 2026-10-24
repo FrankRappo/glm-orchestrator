@@ -31,13 +31,18 @@ Rules, in order:
 4. Bare legacy `STATUS:` markers without the placeholder marker stay terminal,
    and a finished report that merely mentions "placeholder" or "in progress"
    inside a substantive body stays terminal.
+5. An oversized report cannot be proved to be a placeholder-only stub when
+   its earlier body was omitted. Its final `PARTIAL` remains terminal. If the
+   bounded cut lands mid-line, the incomplete first line is excluded; a STATUS
+   suffix from that line cannot become false terminal evidence.
 
 The helper uses nonblocking `O_NOFOLLOW`, then requires a regular single-link
 inode. FIFOs, directories, and symlinked/hardlinked leaves are refused before
 any blocking read or classification (exit 2, no verdict). Reports over 1 MiB
 are read through a bounded 1 MiB terminal tail. The last STATUS in that tail is
 preserved even when an older status lies in the prefix; if the tail has no
-STATUS, the helper fails closed rather than returning NONE.
+STATUS after excluding a mid-line fragment, the helper fails closed rather
+than returning NONE.
 
 ## Recovery and evidence
 

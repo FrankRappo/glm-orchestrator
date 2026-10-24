@@ -22,7 +22,10 @@ substantive body stays terminal. Bare legacy ``STATUS:`` markers without the
 placeholder marker stay terminal. Reports are opened nonblocking with
 O_NOFOLLOW and must be regular single-link inodes; FIFOs and linked leaves are
 refused rather than classified. Oversized reports retain terminal evidence
-from a bounded tail or fail closed when that tail has no STATUS.
+from a bounded tail or fail closed when that tail has no STATUS. Their
+PARTIAL verdict remains terminal because omitted bytes prevent proving the
+"only a stub" condition. A tail cut mid-line drops that incomplete first line
+so a suffix cannot masquerade as complete STATUS evidence.
 """
 
 from __future__ import annotations
@@ -99,8 +102,12 @@ def _meaningful_body(lines: list[str]) -> bool:
     return False
 
 
-def classify_text(text: str) -> str:
-    """Return SUCCESS|FAIL|BLOCKED|PARTIAL (terminal), UNFINISHED or NONE."""
+def classify_text(text: str, *, complete: bool = True) -> str:
+    """Return SUCCESS|FAIL|BLOCKED|PARTIAL (terminal), UNFINISHED or NONE.
+
+    ``complete`` is false for an oversized report read through a bounded tail.
+    Its omitted prefix means the helper cannot prove a placeholder-only stub.
+    """
     lines = text.splitlines()
     statuses = [match.group(1) for match in map(STATUS_RE.match, lines) if match]
     if not statuses:
@@ -108,25 +115,27 @@ def classify_text(text: str) -> str:
     status = statuses[-1]  # last STATUS line wins, like the old grep|tail -1
     if status != "PARTIAL":
         return status
-    if any(PLACEHOLDER_RE.search(line) for line in lines) and not _meaningful_body(lines):
+    if (complete and any(PLACEHOLDER_RE.search(line) for line in lines)
+            and not _meaningful_body(lines)):
         return "UNFINISHED"
     return "PARTIAL"
 
 
-def read_report(path: str) -> str | None:
-    """Read a safe report leaf; None for unsafe/unreadable inodes.
+def read_report(path: str) -> tuple[str, bool] | None:
+    """Read a safe report leaf and whether it was bounded.
 
-    A missing file is simply no report (empty text -> NONE), while symlinks,
-    shared inodes and other unsafe leaves are refused without a verdict.
+    A missing file is simply no report (empty text -> NONE); None means an
+    unsafe/unreadable inode or an oversized tail with no terminal evidence.
     O_NONBLOCK ensures a FIFO is inspected and rejected rather than opened
     indefinitely. Oversized files are scanned through a bounded tail; a
     terminal STATUS there wins over any earlier status, while an unknown tail
-    is a classifier failure rather than NONE.
+    is a classifier failure rather than NONE. If the byte cut lands mid-line,
+    that partial first line is discarded before classification.
     """
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
-        return ""
+        return "", False
     except OSError as exc:
         print(f"report_status: refusing unsafe/unreadable report {path}: {exc}",
               file=sys.stderr)
@@ -137,20 +146,27 @@ def read_report(path: str) -> str | None:
             print(f"report_status: refusing non-regular or shared inode: {path}",
                   file=sys.stderr)
             return None
+        bounded = info.st_size > MAX_BYTES
         with os.fdopen(fd, "rb", closefd=False) as handle:
-            if info.st_size > MAX_BYTES:
-                handle.seek(info.st_size - MAX_BYTES)
-            data = handle.read(MAX_BYTES)
+            if bounded:
+                handle.seek(info.st_size - MAX_BYTES - 1)
+                boundary = handle.read(1)
+                data = handle.read(MAX_BYTES)
+                if boundary != b"\n":
+                    newline = data.find(b"\n")
+                    data = data[newline + 1:] if newline >= 0 else b""
+            else:
+                data = handle.read(MAX_BYTES)
     finally:
         os.close(fd)
     text = data.decode("utf-8", errors="replace")
-    if info.st_size > MAX_BYTES and not any(
+    if bounded and not any(
             STATUS_RE.match(line) for line in text.splitlines()):
         print(f"report_status: oversized report has no terminal STATUS in "
               f"its bounded tail, refusing unknown completion: {path}",
               file=sys.stderr)
         return None
-    return text
+    return text, bounded
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -159,10 +175,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", help="report file to classify")
     args = parser.parse_args(argv)
 
-    text = read_report(args.path)
-    if text is None:
+    report = read_report(args.path)
+    if report is None:
         return 2
-    verdict = classify_text(text)
+    text, bounded = report
+    verdict = classify_text(text, complete=not bounded)
     if verdict == "NONE":
         print("NONE")
         return 1

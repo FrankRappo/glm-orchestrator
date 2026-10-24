@@ -141,6 +141,28 @@ class ReportStatusTests(unittest.TestCase):
         result = self.classify_path(path)
         self.assertEqual((result.returncode, result.stdout.strip()), (0, "PARTIAL"))
 
+    def test_oversized_substantive_report_with_placeholder_tail_is_terminal(self):
+        path = self.dir / "report.md"
+        path.write_bytes(
+            b"Substantive findings and verification evidence outside the tail.\n"
+            + b"\n" * (1 << 20)
+            + b"# T14 report placeholder \xe2\x80\x94 in progress\n\n"
+            + b"STATUS: PARTIAL\n")
+        result = self.classify_path(path)
+        self.assertEqual((result.returncode, result.stdout.strip()), (0, "PARTIAL"))
+
+    def test_oversized_midline_cut_does_not_fabricate_status(self):
+        path = self.dir / "report.md"
+        fake_status = b"STATUS: SUCCESS\n"
+        path.write_bytes(
+            b"oversized prefix without a boundary after this text "
+            + fake_status
+            + b"x" * ((1 << 20) - len(fake_status)))
+        result = self.classify_path(path)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout.strip(), "")
+        self.assertIn("oversized", result.stderr.lower())
+
     def test_oversized_unknown_tail_fails_closed(self):
         path = self.dir / "report.md"
         path.write_bytes(b"STATUS: BLOCKED\n" + b"x" * ((1 << 20) + 4096))
