@@ -24,6 +24,10 @@ QUOTA_RESERVE_PERCENT="${QUOTA_RESERVE_PERCENT:-15}"
 QUOTA_MAX_AGE="${QUOTA_MAX_AGE:-21600}"
 GLM_BIN="${GLM_BIN:-glm}"
 TASKS="${TASKS:-}"
+# Same stub-aware classification as the supervisor (glm/report_status.py):
+# an in-progress placeholder stub is not a terminal report, so the queue keeps
+# such a task pending instead of skipping it or declaring ALL DONE.
+REPORT_STATUS_HELPER="${REPORT_STATUS_HELPER:-$ROOT/report_status.py}"
 
 STATUS_RE='^[[:space:]]*[*#`>[:space:]]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL)[*`[:space:]]*$'
 
@@ -81,10 +85,15 @@ report_file(){
 }
 
 report_status(){
-  local report="$1"
+  # Terminal statuses only (shared classifier); a stub-only report behaves
+  # like a missing report: the task stays pending and can be relaunched.
+  local report="$1" verdict
   [[ -f "$report" ]] || return 0
-  grep -aE "$STATUS_RE" "$report" 2>/dev/null | tail -1 \
-    | sed -E 's/^[^S]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL).*/\1/'
+  verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report" 2>/dev/null)" || true
+  case "$verdict" in
+    SUCCESS|FAIL|BLOCKED|PARTIAL) printf '%s\n' "$verdict" ;;
+  esac
+  return 0
 }
 
 session_name(){

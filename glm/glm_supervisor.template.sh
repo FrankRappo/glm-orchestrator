@@ -36,6 +36,10 @@ GLM_TRANSIENT_RETRY_SAFE="${GLM_TRANSIENT_RETRY_SAFE:-1}"
 GLM_TRANSIENT_MAX_RETRIES="${GLM_TRANSIENT_MAX_RETRIES:-0}" # 0: unlimited
 GLM_TRANSIENT_RETRY_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_DELAY_SECONDS:-10}"
 GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS="${GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS:-60}"
+# Shared stub-aware report classification (glm/report_status.py), identical for
+# supervisor, queue and status display: a report that is only the
+# "report placeholder — in progress" stub is NOT a terminal report.
+REPORT_STATUS_HELPER="${REPORT_STATUS_HELPER:-$ROOT/report_status.py}"
 
 STATUS_RE='^[[:space:]]*[*#`>[:space:]]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL)[*`[:space:]]*$'
 RATE_LIMIT_RE='quota|usage cap|usage limit|rate.?limit|limit reached|too many requests|statusCode:[[:space:]]*429([^0-9]|$)|HTTP(/[0-9.]+)?[[:space:]:]+429([^0-9]|$)|insufficient_quota|resets? at|resetAt'
@@ -49,10 +53,21 @@ exec >> "$SLOG" 2>&1
 log(){ echo "[$(date '+%F %T')] $*"; }
 notify(){ [[ -n "$NOTIFY_CMD" ]] && $NOTIFY_CMD "$*" >/dev/null 2>&1 || true; }
 
+report_verdict(){
+  # SUCCESS|FAIL|BLOCKED|PARTIAL (terminal) | UNFINISHED (placeholder stub) |
+  # NONE (no STATUS line) | empty (unreadable/unsafe report inode).
+  [[ -f "$1" ]] || { printf 'NONE\n'; return 0; }
+  python3 "$REPORT_STATUS_HELPER" classify "$1" 2>/dev/null || true
+}
+
 report_status(){
-  [[ -f "$REPORT" ]] || return 0
-  grep -aE "$STATUS_RE" "$REPORT" 2>/dev/null | tail -1 \
-    | sed -E 's/^[^S]*STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL).*/\1/'
+  # Terminal statuses only; an UNFINISHED stub behaves like no report at all.
+  local verdict
+  verdict="$(report_verdict "$REPORT")"
+  case "$verdict" in
+    SUCCESS|FAIL|BLOCKED|PARTIAL) printf '%s\n' "$verdict" ;;
+  esac
+  return 0
 }
 
 write_blocked_report(){
@@ -215,11 +230,26 @@ while :; do
   rm -f "$STATE_DIR/$TASK.running" "$STATE_DIR/$TASK.pid"
   : > "$STATE_DIR/$TASK.finished"
 
-  status="$(report_status)"
-  if [[ -n "$status" ]]; then
-    log "terminal report task=$TASK status=$status rc=$rc"
-    [[ "$status" == SUCCESS ]] && exit 0
-    exit 1
+  verdict="$(report_verdict "$REPORT")"
+  case "$verdict" in
+    SUCCESS|FAIL|BLOCKED|PARTIAL)
+      log "terminal report task=$TASK status=$verdict rc=$rc"
+      [[ "$verdict" == SUCCESS ]] && exit 0
+      exit 1
+      ;;
+  esac
+  if [[ "$verdict" == UNFINISHED ]]; then
+    # Not a terminal report: preserve the stub per attempt before the retry
+    # (or a blocked report) clears/replaces it. The report leaf itself keeps
+    # its inode/owner/mode; only evidence copies land in STATE_DIR.
+    stub_evidence="$STATE_DIR/$TASK.attempt-$attempt.stub.md"
+    if cat -- "$REPORT" > "$stub_evidence.tmp" 2>/dev/null; then
+      mv -f -- "$stub_evidence.tmp" "$stub_evidence"
+      log "unfinished placeholder stub task=$TASK attempt=$attempt; treated as no report; evidence saved to $stub_evidence"
+    else
+      rm -f -- "$stub_evidence.tmp"
+      log "unfinished placeholder stub task=$TASK attempt=$attempt; treated as no report; evidence copy failed"
+    fi
   fi
 
   auth_line="$(attempt_log | grep -aiE "$AUTH_RE" | tail -1 || true)"

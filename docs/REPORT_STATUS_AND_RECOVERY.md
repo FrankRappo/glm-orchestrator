@@ -1,0 +1,66 @@
+# Report status classification and transient recovery
+
+Shared contract implemented by `glm/report_status.py` and used identically by
+`glm/glm_supervisor.template.sh` (worker supervision), `glm/glm_orchestrator.template.sh`
+(queue) and `common/orchestrate.template.sh` (`orchestrate status` display).
+
+## Classification
+
+`python3 glm/report_status.py classify <report>` prints one verdict:
+
+| verdict | meaning |
+| --- | --- |
+| `SUCCESS` / `FAIL` / `BLOCKED` / `PARTIAL` | terminal report (exit 0) |
+| `UNFINISHED` | in-progress placeholder stub, **not** terminal (exit 1) |
+| `NONE` | no report file or no STATUS line (exit 1, no output if unsafe) |
+
+Rules, in order:
+
+1. The last STATUS line in the file wins (`SUCCESS|FAIL|BLOCKED|PARTIAL`,
+   same line grammar the templates always used).
+2. `SUCCESS`/`FAIL`/`BLOCKED` are always terminal, even if the report also
+   contains a placeholder heading.
+3. `PARTIAL` is terminal **except** for the clear unfinished case: the report
+   contains a `report placeholder — in progress` marker (dash/colon/paren
+   variants) and has no meaningful body — nothing besides whitespace, markdown
+   headings, rules and the STATUS line. That exact stub
+   (`# T14 report placeholder — in progress` + `STATUS: PARTIAL`, 58 bytes) is
+   the 2026-10-24 incident; it is treated like a missing report.
+4. Bare legacy `STATUS:` markers without the placeholder marker stay terminal,
+   and a finished report that merely mentions "placeholder" or "in progress"
+   inside a substantive body stays terminal.
+
+The helper reads through `O_NOFOLLOW` on a regular single-link inode and
+refuses symlinked/hardlinked report leaves instead of classifying them
+(exit 2, no verdict).
+
+## Recovery and evidence
+
+When a worker attempt ends:
+
+1. A terminal report keeps its existing terminal priority — no retry, never
+   replaying possibly-completed financial/GUI work. Authentication errors and
+   quota (429) waits are also unchanged.
+2. If the report is the unfinished stub, the supervisor preserves a per-attempt
+   evidence copy at `state/glm/<task>.attempt-<n>.stub.md` before any later
+   attempt or blocked-report write replaces the content. The report file itself
+   keeps its inode/owner/mode; only the worker writes to it.
+3. Only then do the provider-failure classifiers run. A retryable HTTP
+   500/502/503/504, connection reset/timeout together with the stub (or with no
+   report) triggers automatic recovery with backoff — even when
+   `MAX_RESPAWN=0` / `No-Respawn: true`, which limits ordinary failures only.
+   The current attempt's log offset, auth-before-quota-before-transient
+   ordering and quota wait caps are unchanged.
+4. A stub with exit code 0 is not a completion: without a transient failure it
+   is an ordinary failure and the supervisor writes the usual blocked report
+   (backing up the stub as `*.incomplete.*` evidence).
+
+## Queue and status behavior
+
+* The queue does not skip a task, log it finished, or create `ALL_DONE` while
+  its report is only the stub; the task stays pending and is relaunched.
+* `orchestrate status` shows `NO FINAL REPORT — in-progress placeholder stub`
+  for such reports instead of a terminal `STATUS: PARTIAL`.
+
+Worker guidance is in the launcher preamble: progress notes are not terminal
+reports; a STATUS line belongs in the report only when it is genuinely finished.

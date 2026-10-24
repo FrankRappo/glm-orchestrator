@@ -45,6 +45,13 @@ STATUS: PARTIAL
 
 Do not claim SUCCESS without verification evidence.
 
+Progress notes are NOT terminal reports. Never put a STATUS line into the
+report while work is still in progress, and never leave a placeholder stub
+such as "# ... report placeholder — in progress" in it: an unfinished stub is
+treated as no report at all and the task will be recovered and retried. Emit
+STATUS only when the report is genuinely finished; keep interim progress in
+your working notes outside the report file.
+
 Efficiency without quality loss: Prefer targeted file reads and bounded searches
 over repeated whole-repository scans. Reuse evidence already provided in the
 task. Run focused checks while editing and required broader validation once at

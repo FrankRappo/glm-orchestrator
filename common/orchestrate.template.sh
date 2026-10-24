@@ -8,6 +8,9 @@ GLM_ROOT="$SETTINGS_ROOT/glm"
 ORCHESTRATOR="$GLM_ROOT/glm_orchestrator.template.sh"
 GLM_CONTROLLER="$GLM_ROOT/glm_controller.template.sh"
 QUOTA_MONITOR="${QUOTA_MONITOR:-$COMMON_ROOT/quota_monitor.py}"
+# Shared stub-aware report classification (glm/report_status.py), used by the
+# status display exactly like the supervisor and the queue use it.
+REPORT_STATUS_HELPER="${REPORT_STATUS_HELPER:-$GLM_ROOT/report_status.py}"
 QUOTA_WATCH="$COMMON_ROOT/quota_watch.template.sh"
 QUOTA_WATCH_SESSION="${QUOTA_WATCH_SESSION:-agent_quota_watch}"
 
@@ -139,8 +142,13 @@ PY
     [[ -f "$PROJECT_DIR/orch/launch.json" ]] && cat "$PROJECT_DIR/orch/launch.json"
     for report in "$PROJECT_DIR"/reports/report_*.md; do
       [[ -f "$report" ]] || continue
-      status="$(grep -aE 'STATUS:[[:space:]]*(SUCCESS|FAIL|BLOCKED|PARTIAL)' "$report" | tail -1 || true)"
-      printf '%s: %s\n' "$(basename "$report")" "${status:-NO TERMINAL STATUS}"
+      verdict="$(python3 "$REPORT_STATUS_HELPER" classify "$report" 2>/dev/null)" || true
+      case "$verdict" in
+        SUCCESS|FAIL|BLOCKED|PARTIAL) status="STATUS: $verdict" ;;
+        UNFINISHED) status="NO FINAL REPORT — in-progress placeholder stub" ;;
+        *) status="NO TERMINAL STATUS" ;;
+      esac
+      printf '%s: %s\n' "$(basename "$report")" "$status"
     done
     ;;
   attach)

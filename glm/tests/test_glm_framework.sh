@@ -32,6 +32,14 @@ Resource-Lock: none
 Write `reports/report_T01.md` as the required report.
 EOF
 fi
+if [[ "${GLM_TASK_ID:-}" == T03_stub && ! -f "$GLM_TASK_PROJECT/state/glm/t03_attempted" ]]; then
+  # Incident regression fixture: first attempt leaves only the unfinished
+  # placeholder stub and dies with a retryable 502.
+  : > "$GLM_TASK_PROJECT/state/glm/t03_attempted"
+  printf '# T03 report placeholder — in progress\n\nSTATUS: PARTIAL\n' > "$GLM_TASK_REPORT"
+  printf '{"error":{"message":"statusCode: 502 Bad Gateway"}}\n'
+  exit 1
+fi
 cat > "$GLM_TASK_REPORT" <<EOF
 # Fake report
 
@@ -68,6 +76,19 @@ Resource-Lock: none
 
 Read `reports/report_T01.md` before starting.
 Write `reports/report_T02.md` as the required report.
+EOF
+
+# Incident regression: a stub-only report plus a retryable 502 must recover
+# through the queue even with No-Respawn (MAX_RESPAWN=0).
+cat > "$project/tasks/T03_stub.md" <<'EOF'
+# T03 stub-recovery fixture
+Complexity: low
+Model: auto
+Mode: build
+Resource-Lock: none
+No-Respawn: true
+
+Write `reports/report_T03.md` as the required report.
 EOF
 
 metadata="$(python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" "$project/tasks/T01_low.md")"
@@ -179,6 +200,9 @@ if python3 "$ROOT/task_metadata.py" --policy "$ROOT/model_policy.json" "$project
 fi
 rm "$project/tasks/T02_invalid.md"
 
+# Keep provider-recovery backoff fast in tests; behavior itself is unchanged.
+export GLM_TRANSIENT_RETRY_DELAY_SECONDS=0 GLM_TRANSIENT_RETRY_MAX_DELAY_SECONDS=0
+
 timeout 35s env PROJECT_DIR="$project" IDLE_EXIT=1 MAX_PARALLEL=1 POLL=1 \
   GLM_BIN="$WORK/fake-glm" QUOTA_MONITOR="$WORK/fake-quota" QUOTA_POLICY=enforce \
   bash "$ROOT/glm_orchestrator.template.sh"
@@ -193,6 +217,67 @@ grep -q 'ALL DONE' "$project/logs/glm_orchestrator.log"
 grep -q '"total_tokens":110' "$project/logs/glm_usage.jsonl"
 python3 "$ROOT/../common/glm_usage_report.py" "$project/logs/glm_usage.jsonl" --json \
   | grep -q '"total_tokens": 110'
+
+# Queue-level stub recovery: T03 wrote only the 58-byte in-progress stub and
+# failed with 502 on its first attempt; the queue must not treat that stub as
+# a terminal PARTIAL, must relaunch despite No-Respawn: true, and must keep
+# per-attempt stub evidence in the controller STATE_DIR.
+grep -q '^STATUS: SUCCESS$' "$project/reports/report_T03.md"
+grep -q 'model=GLM-5.3' "$project/reports/report_T03.md"
+printf '# T03 report placeholder — in progress\n\nSTATUS: PARTIAL\n' > "$WORK/expected_stub.md"
+cmp -s "$WORK/expected_stub.md" "$project/state/glm/T03_stub.attempt-1.stub.md"
+grep -q 'unfinished placeholder stub' "$project/logs/T03_stub.log.supervisor"
+grep -q 'transient provider failure' "$project/logs/T03_stub.log.supervisor"
+
+# Status display: genuine reports keep their terminal STATUS line, and none
+# of the finished reports may be shown as missing.
+status_out="$(bash "$ROOT/../common/orchestrate.template.sh" status --project "$project")"
+grep -q 'report_T01.md: STATUS: SUCCESS' <<<"$status_out"
+grep -q 'report_T03.md: STATUS: SUCCESS' <<<"$status_out"
+if grep -q 'NO TERMINAL STATUS' <<<"$status_out"; then
+  echo "status reported a finished report as missing" >&2
+  exit 1
+fi
+
+# The queue must not mark ALL_DONE — or display PARTIAL-done — while a task's
+# report is only the unfinished placeholder stub: that task is still pending.
+project4="$WORK/project-stub-guard"
+mkdir -p "$project4"/{tasks,reports,logs,state/glm,orch}
+cat > "$project4/tasks/T01_guard.md" <<'EOF'
+# stub guard fixture
+Complexity: low
+Model: auto
+Mode: build
+Resource-Lock: none
+No-Respawn: true
+
+Write `reports/report_T01_guard.md` as the required report.
+EOF
+printf '# T01 report placeholder — in progress\n\nSTATUS: PARTIAL\n' > "$project4/reports/report_T01_guard.md"
+cat > "$WORK/slow-glm" <<'SH'
+#!/usr/bin/env bash
+sleep 60
+printf '# slow finish\n\nSTATUS: SUCCESS\n' > "$GLM_TASK_REPORT"
+SH
+chmod +x "$WORK/slow-glm"
+guard_rc=0
+timeout 6s env PROJECT_DIR="$project4" IDLE_EXIT=1 MAX_PARALLEL=1 POLL=1 \
+  GLM_BIN="$WORK/slow-glm" QUOTA_MONITOR="$WORK/fake-quota" QUOTA_POLICY=enforce \
+  bash "$ROOT/glm_orchestrator.template.sh" || guard_rc=$?
+if [[ "$guard_rc" -eq 0 ]]; then
+  echo "queue exited cleanly on a stub-only report (premature ALL_DONE)" >&2
+  exit 1
+fi
+[[ ! -f "$project4/reports/ALL_DONE" ]]
+grep -q '^STATUS: PARTIAL$' "$project4/reports/report_T01_guard.md"
+guard_status="$(bash "$ROOT/../common/orchestrate.template.sh" status --project "$project4")"
+if grep -q 'report_T01_guard.md: STATUS: PARTIAL' <<<"$guard_status"; then
+  echo "status displayed a stub as a terminal PARTIAL" >&2
+  exit 1
+fi
+grep -q 'report_T01_guard.md: NO FINAL REPORT' <<<"$guard_status"
+guard_hash="$(printf '%s' "$project4" | sha256sum | cut -c1-8)"
+tmux kill-session -t "=glm_${guard_hash}_T01_guard_sup" 2>/dev/null || true
 
 # Unified dispatcher: Codex owns task authoring while GLM is the executor.
 project2="$WORK/project-dispatch"
