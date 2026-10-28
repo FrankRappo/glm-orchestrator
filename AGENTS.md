@@ -27,3 +27,17 @@
 - Keep `common/zcode_coding_plan_quota.mjs` output credential-free; credentials may only be decrypted in memory for official Z.ai/ZCode endpoints.
 - Preserve fail-closed quota admission and the single-controller lock contract.
 - Always launch model work under the operational supervisor with automatic recovery for temporary provider/network errors (500/502/503/504, connection reset/timeout). Preserve each attempt, back off between retries, and retain the same task scope and artifacts. `No-Respawn` limits ordinary worker failures; it does not disable temporary provider recovery. Never replay financial or GUI side effects blindly: use durable operation guards and verify actual state before a retry. Authentication/configuration errors and genuine terminal reports require their existing handling.
+
+
+<!-- OWNER_STAND_MEMORY_UNCAPPED_20261029 -->
+## Owner rule29.10.2026 — no artificial stand/build memory cap
+
+By explicit owner instruction, future authorized VPS test/build jobs run without
+controller-imposed RAM or swap ceilings. Do not copy legacy MemoryMax=2G,
+MemoryHigh, MemorySwapMax=0, Docker --memory/--memory-swap, ulimit memory limits,
+or artificial Node --max-old-space-size clamps into new stand/build jobs.
+Use infinity for systemd task memory properties where necessary to override
+controller defaults. Preserve VPS-only execution, distinct UID, strict filesystem
+and network isolation, CPU scheduling, supervision and cleanup. This instruction
+applies to task-owned tests/builds; existing production service limits are a
+separate scope and remain governed by their own release policy.
