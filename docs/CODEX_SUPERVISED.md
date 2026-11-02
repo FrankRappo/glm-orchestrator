@@ -1,3 +1,9 @@
+<!-- OWNER_GLM_ZERO_RESERVE_20261101:START -->
+## Owner01.11.2026 — GLM/Flash use the full provider quota, no artificial reserve
+
+The owner permanently removed the artificial15% quota reserve for ALL GLM/Flash work, including already-created queues. Use quota_reserve_percent=0 in /work/glm/glm/model_policy.json; do not ask again to spend a reserve. Continue until the actual provider quota is exhausted; the owner handles any available provider reset. Do not purchase/reset the account automatically. Keep live quota freshness, unknown/auth failures fail-closed, actual exhaustion detection and provider retry/cleanup controls. This overrides older15%-reserve guidance but not VPS-only/no-agent-wait/model-routing rules. Already-running controllers inherit the effective policy on each quota admission without restart or duplicate workers.
+<!-- OWNER_GLM_ZERO_RESERVE_20261101:END -->
+
 <!-- OWNER_VPS_ONLY_20261024:START -->
 ## Owner rule 24.10.2026 — all projects, WSL and Windows
 
@@ -9,16 +15,31 @@
 - Remove only owner-named or verified task-owned local files after verifying complete remote copies. Preserve unrelated files, older backups and other agents' work. Only an explicit newer owner exception overrides this rule.
 <!-- OWNER_VPS_ONLY_20261024:END -->
 
+<!-- OWNER_NO_AGENT_WAIT_20261030:START -->
+## Owner rule 30.10.2026 — do not wait for agents by default
+
+- DEFAULT: DO NOT WAIT FOR AGENTS. Waiting for an agent to finish requires an explicit instruction from the owner. This applies to every project, model, provider, native subagent and orchestrator in WSL and Windows.
+- After delegation, perform at most one brief startup check and return control immediately. If actual model startup is not yet confirmed, say so honestly and return control; do not extend startup verification into an idle waiting loop.
+- Do not keep a turn open, sleep, repeatedly poll logs/status, use wait_agent, or repeatedly await an exec/session/report just to wait for agent completion unless the owner expressly asks to wait.
+- Requests to implement, finish, fix, supervise, review, accept, achieve high quality, or use multiple agents DO NOT authorize waiting. Supervised mode and responsibility for later acceptance do not authorize waiting either.
+- Only an explicit request such as "wait", "wait until the agent finishes", "жди", or "дождись завершения" authorizes waiting for that specific run. A later "do not wait" immediately revokes that authorization. Do not carry waiting permission into other runs or projects.
+- A status question authorizes one compact status check and a concise answer, not a monitoring or waiting loop. Perform already-authorized review when a completed report is actually available or on a new owner request; never wait for an unavailable report by default.
+- Leave agents and their operational supervisors/recovery/quota/cleanup guards running independently. A lightweight asynchronous completion notification is allowed; an idle LLM/controller waiting loop is not. Stopping a wait does not mean stopping the worker.
+- Preserve task, attempt, baseline and report pointers so later acceptance can resume without a duplicate worker. A launched worker or SUCCESS report is not proof of application completion or acceptance.
+
+This newer owner rule supersedes older instructions to "delegate and wait", "await the report", or keep a supervised turn alive until completion. Other safety, VPS-only, scope and acceptance rules remain in force.
+<!-- OWNER_NO_AGENT_WAIT_20261030:END -->
+
 # Codex-supervised GLM workflow
 
 This framework supports two controller modes. **Default: launch-only.** Prepare
 the task, launch GLM, verify once that the actual worker and requested model
 started (a queue-created message alone is insufficient), then return control to
-the user. If startup is not yet known, wait only for the initial start/failure
-signal; do not launch duplicates. If startup fails, report the failure rather
-than claiming success.
+the user. If startup is not yet known after one brief check, report that startup remains
+unconfirmed and return control. Do not wait for startup or completion by default
+and do not launch duplicates. Report actual startup failures honestly.
 
-## Default cadence: delegate and wait for the report
+## Default cadence: delegate and return control; wait only on explicit request
 
 The owner's standing preference is to save Codex tokens by letting GLM do the
 assigned work. Prepare a bounded task, verify actual model execution once, then
@@ -33,9 +54,9 @@ question authorizes one compact check; it does not authorize another monitoring,
 correction, or parallel implementation loop.
 
 Requests to "finish", "fix", or "solve the problem" define the outcome; they do
-not by themselves request continuous Codex supervision. Even in supervised mode,
-wait for the report before reviewing or correcting work unless the user
-explicitly requests continuous monitoring. Operational supervisors, quota
+not by themselves request continuous Codex supervision. Supervised mode does not authorize waiting. Return control after the brief
+startup check. Review or correct only when the completed report is actually
+available; waiting for it requires a separate explicit owner instruction. Operational supervisors, quota
 admission, isolation, and credential/process cleanup remain active throughout.
 Report availability does not expand review, integration, or deployment authority.
 
@@ -230,9 +251,10 @@ Launch, planning completion, a worker-stage exit, and `STATUS: SUCCESS` are
 intermediate lifecycle events, not final handoffs.
 
 At launch, retain stable pointers to the controller task, worker session or
-attempt, baseline, and report path. Await the completed report from that same
-attempt, preferably through a lightweight completion notification. Poll through
-Codex only when the user explicitly requests continuous monitoring; a standalone
+attempt, baseline, and report path, then return control. Do not await an
+unfinished report unless the owner explicitly asks to wait. A lightweight
+asynchronous completion notification is permitted. Poll through Codex only
+when the user explicitly requests continuous monitoring; a standalone
 status request permits one compact check. Do not start a duplicate worker merely
 because the first attempt is quiet or still running. Retrieve full logs only to
 diagnose a concrete failure or missing evidence. An inexpensive external monitor
@@ -245,9 +267,10 @@ When an attempt reports `STATUS: SUCCESS`, Codex performs the independent diff
 review and trusted acceptance checks above. If that review finds a defect or
 missing evidence, Codex creates a bounded correction task linked to the original
 task. The correction task records the exact findings, required tests, current
-baseline, allowed paths, and unchanged acceptance gates. Codex then waits for
-that correction, reviews it, and repeats only the checks needed to establish the
-affected acceptance claims. Do not turn the correction loop into repeated
+baseline, allowed paths, and unchanged acceptance gates. After the correction's
+brief startup check, Codex returns control. When its completed report is actually
+available, Codex reviews it and repeats only the checks needed to establish the
+affected acceptance claims. Waiting requires an explicit owner instruction. Do not turn the correction loop into repeated
 unbounded full-suite runs or new process bureaucracy.
 
 A retry continues the same failed attempt only when the runner's retry contract
@@ -258,11 +281,12 @@ and report from every failed attempt. Before retrying, determine whether the
 failed command may have produced side effects; never blindly repeat a
 non-idempotent or externally visible action.
 
-The controller stops only when the scoped requirements and mandatory acceptance
-are complete, the user explicitly stops the work, or a concrete need for
-authority or information remains after all safe in-scope work is exhausted.
-Ending a planning phase, worker process, monitoring stage, or correction attempt
-does not satisfy that stop condition.
+The task is complete only when the scoped requirements and mandatory acceptance
+are complete. Returning control after startup is the normal pending-work state,
+not a claim of task completion. Responsibility and task pointers persist across
+turns; do not keep a turn open just to wait for lifecycle completion. Resume an
+already authorized review when its completed report is actually available or
+on a new owner request. Waiting for an agent requires explicit owner direction.
 
 ## Token-efficiency target
 
@@ -275,3 +299,17 @@ Claims such as `2-3x` or `10x` savings are measurement targets, not promises.
 Measure comparable tasks with the same acceptance gates and report Codex input,
 output, and cached tokens plus GLM usage, elapsed time, rework, and acceptance
 outcome. Reject savings claims that omit failed attempts or reduce validation.
+
+
+<!-- OWNER_STAND_MEMORY_UNCAPPED_20261029 -->
+## Owner rule29.10.2026 — no artificial stand/build memory cap
+
+By explicit owner instruction, future authorized VPS test/build jobs run without
+controller-imposed RAM or swap ceilings. Do not copy legacy MemoryMax=2G,
+MemoryHigh, MemorySwapMax=0, Docker --memory/--memory-swap, ulimit memory limits,
+or artificial Node --max-old-space-size clamps into new stand/build jobs.
+Use infinity for systemd task memory properties where necessary to override
+controller defaults. Preserve VPS-only execution, distinct UID, strict filesystem
+and network isolation, CPU scheduling, supervision and cleanup. This instruction
+applies to task-owned tests/builds; existing production service limits are a
+separate scope and remain governed by their own release policy.

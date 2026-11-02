@@ -375,7 +375,13 @@ def admission(
             "oldest_age_seconds": max(now - int(b.get("observed_at") or 0) for b in stale),
         }
     cutoff = 100.0 - reserve_percent
-    over_cutoff = [b for b in selected if float(b.get("used_percent") or 0) >= cutoff]
+    over_cutoff = [
+        b for b in selected
+        if float(b.get("used_percent") or 0) >= cutoff
+        or (float(b.get("limit") or 0) > 0
+            and b.get("remaining") is not None
+            and float(b["remaining"]) <= 0)
+    ]
     # ZCode may expose multiple entitlement buckets for the same model. One
     # usable bucket is enough; Codex windows are cumulative gates, so every
     # reported window must remain below the reserve cutoff.
@@ -385,7 +391,7 @@ def admission(
         denied = []
     return {
         "decision": "deny" if denied else "allow",
-        "reason": "reserve_reached" if denied else "within_budget",
+        "reason": ("quota_exhausted" if reserve_percent == 0 else "reserve_reached") if denied else "within_budget",
         "provider": provider,
         "model": model,
         "reserve_percent": reserve_percent,
@@ -441,6 +447,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def effective_reserve_percent(provider: str, requested: float) -> float:
+    """Apply the owner's GLM policy also to already-running older callers.
+
+    Orchestrators may still pass their old 15% argument. The repository's
+    model policy is re-read on every admission, so removing the reserve does
+    not require restarting any controller or active worker. Other providers
+    retain their own requested reserve and all freshness/error gates remain.
+    """
+    if provider != "zcode":
+        return requested
+    policy_path = Path(__file__).resolve().parents[1] / "glm" / "model_policy.json"
+    if not policy_path.exists():
+        return requested
+    policy = json.loads(policy_path.read_text(encoding="utf-8"))
+    value = policy.get("quota_reserve_percent", requested)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
+        raise ValueError("quota_reserve_percent must be a percentage from 0 to 100")
+    return float(value)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     buckets: list[dict[str, Any]] = []
@@ -481,7 +507,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     exit_code = 0
     if args.admit_provider:
-        decision = admission(buckets, args.admit_provider, args.admit_model, args.reserve_percent, args.max_age)
+        effective_reserve = effective_reserve_percent(args.admit_provider, args.reserve_percent)
+        decision = admission(buckets, args.admit_provider, args.admit_model, effective_reserve, args.max_age)
+        decision["requested_reserve_percent"] = args.reserve_percent
         snapshot["admission"] = decision
         if decision["decision"] == "deny":
             exit_code = 3

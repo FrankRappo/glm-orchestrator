@@ -9,6 +9,21 @@
 - Remove only owner-named or verified task-owned local files after verifying complete remote copies. Preserve unrelated files, older backups and other agents' work. Only an explicit newer owner exception overrides this rule.
 <!-- OWNER_VPS_ONLY_20261024:END -->
 
+<!-- OWNER_NO_AGENT_WAIT_20261030:START -->
+## Owner rule 30.10.2026 — do not wait for agents by default
+
+- DEFAULT: DO NOT WAIT FOR AGENTS. Waiting for an agent to finish requires an explicit instruction from the owner. This applies to every project, model, provider, native subagent and orchestrator in WSL and Windows.
+- After delegation, perform at most one brief startup check and return control immediately. If actual model startup is not yet confirmed, say so honestly and return control; do not extend startup verification into an idle waiting loop.
+- Do not keep a turn open, sleep, repeatedly poll logs/status, use wait_agent, or repeatedly await an exec/session/report just to wait for agent completion unless the owner expressly asks to wait.
+- Requests to implement, finish, fix, supervise, review, accept, achieve high quality, or use multiple agents DO NOT authorize waiting. Supervised mode and responsibility for later acceptance do not authorize waiting either.
+- Only an explicit request such as "wait", "wait until the agent finishes", "жди", or "дождись завершения" authorizes waiting for that specific run. A later "do not wait" immediately revokes that authorization. Do not carry waiting permission into other runs or projects.
+- A status question authorizes one compact status check and a concise answer, not a monitoring or waiting loop. Perform already-authorized review when a completed report is actually available or on a new owner request; never wait for an unavailable report by default.
+- Leave agents and their operational supervisors/recovery/quota/cleanup guards running independently. A lightweight asynchronous completion notification is allowed; an idle LLM/controller waiting loop is not. Stopping a wait does not mean stopping the worker.
+- Preserve task, attempt, baseline and report pointers so later acceptance can resume without a duplicate worker. A launched worker or SUCCESS report is not proof of application completion or acceptance.
+
+This newer owner rule supersedes older instructions to "delegate and wait", "await the report", or keep a supervised turn alive until completion. Other safety, VPS-only, scope and acceptance rules remain in force.
+<!-- OWNER_NO_AGENT_WAIT_20261030:END -->
+
 <!-- CODEX_SUPERVISED_V1 -->
 # Codex-supervised worker policy
 
@@ -26,13 +41,15 @@ assigned bounded task and write its report. Never create your own follow-up
 agents/tasks to compensate for the controller being absent. Operational
 supervisor/quota and exact cleanup guards remain active.
 
-Standing cadence: delegate, verify startup once, wait for the report. Do not
+Standing cadence: delegate, perform one brief startup check, return control immediately.
+Do not wait for agent completion without an explicit owner instruction. Do not
 expect Codex or native subagents to duplicate your assigned work while you run.
 Complete the bounded task and write the exact requested report with evidence.
 A status question permits one concise check, not continuous supervision.
 Requests to finish or fix the task do not alone select supervised mode. Even in
-supervised mode, the default is report-first review and correction; continuous
-Codex monitoring requires an explicit user request. An already authorized review
+supervised mode, unfinished reports are not awaited by default. Review is
+performed only on an actually completed report; waiting and continuous Codex
+monitoring each require explicit owner direction. An already authorized review
 may resume when the completed report arrives. No report expands authority.
 
 Only explicit supervised mode uses the controller correction loop. In either

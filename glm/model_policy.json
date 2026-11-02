@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "quota_reserve_percent": 0,
   "default_complexity": "medium",
   "provider_id": "account:zai-individual-coding-plan",
   "supervised_input_models": {

@@ -16,6 +16,27 @@ SPEC.loader.exec_module(quota)
 
 
 class QuotaMonitorTests(unittest.TestCase):
+    def test_owner_policy_removes_reserve_from_older_glm_callers_only(self):
+        self.assertEqual(0.0, quota.effective_reserve_percent("zcode", 15.0))
+        self.assertEqual(15.0, quota.effective_reserve_percent("codex", 15.0))
+
+    def test_zero_reserve_uses_remaining_budget_but_stops_at_actual_exhaustion(self):
+        now = int(quota.time.time())
+        buckets = [{"provider": "zcode", "kind": "coding_plan", "model": None,
+                    "used_percent": 88, "remaining": 15770, "limit": 140000,
+                    "observed_at": now}]
+        self.assertEqual("allow", quota.admission(buckets, "zcode", "GLM-5.3-Flash", 0, 60)["decision"])
+        buckets[0].update(used_percent=99, remaining=0)
+        result = quota.admission(buckets, "zcode", "GLM-5.3-Flash", 0, 60)
+        self.assertEqual(("deny", "quota_exhausted"), (result["decision"], result["reason"]))
+
+    def test_zero_reserve_does_not_bypass_unknown_or_stale_quota(self):
+        self.assertEqual("unknown", quota.admission([], "zcode", "GLM-5.3-Flash", 0, 60)["decision"])
+        buckets = [{"provider": "zcode", "kind": "coding_plan", "used_percent": 10,
+                    "observed_at": int(quota.time.time()) - 120}]
+        result = quota.admission(buckets, "zcode", "GLM-5.3-Flash", 0, 60)
+        self.assertEqual(("unknown", "quota_snapshot_stale"), (result["decision"], result["reason"]))
+
     def test_remaining_percent_in_human_and_json_output(self):
         buckets = [
             {"provider": "zcode", "kind": "coding_plan", "name": "five_hour", "window": "five_hour",

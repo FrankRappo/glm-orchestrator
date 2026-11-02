@@ -8,6 +8,7 @@
 /venvs/
 /smoke-*/
 *.previous-*
+/AGENTS.md.bak-browserrule-20261102
 
 # Keep empty runtime roots when present
 !/tasks/.gitkeep

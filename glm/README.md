@@ -1,3 +1,24 @@
+<!-- OWNER_GLM_ZERO_RESERVE_20261101:START -->
+## Owner01.11.2026 — GLM/Flash use the full provider quota, no artificial reserve
+
+The owner permanently removed the artificial15% quota reserve for ALL GLM/Flash work, including already-created queues. Use quota_reserve_percent=0 in /work/glm/glm/model_policy.json; do not ask again to spend a reserve. Continue until the actual provider quota is exhausted; the owner handles any available provider reset. Do not purchase/reset the account automatically. Keep live quota freshness, unknown/auth failures fail-closed, actual exhaustion detection and provider retry/cleanup controls. This overrides older15%-reserve guidance but not VPS-only/no-agent-wait/model-routing rules. Already-running controllers inherit the effective policy on each quota admission without restart or duplicate workers.
+<!-- OWNER_GLM_ZERO_RESERVE_20261101:END -->
+
+<!-- OWNER_NO_AGENT_WAIT_20261030:START -->
+## Owner rule 30.10.2026 — do not wait for agents by default
+
+- DEFAULT: DO NOT WAIT FOR AGENTS. Waiting for an agent to finish requires an explicit instruction from the owner. This applies to every project, model, provider, native subagent and orchestrator in WSL and Windows.
+- After delegation, perform at most one brief startup check and return control immediately. If actual model startup is not yet confirmed, say so honestly and return control; do not extend startup verification into an idle waiting loop.
+- Do not keep a turn open, sleep, repeatedly poll logs/status, use wait_agent, or repeatedly await an exec/session/report just to wait for agent completion unless the owner expressly asks to wait.
+- Requests to implement, finish, fix, supervise, review, accept, achieve high quality, or use multiple agents DO NOT authorize waiting. Supervised mode and responsibility for later acceptance do not authorize waiting either.
+- Only an explicit request such as "wait", "wait until the agent finishes", "жди", or "дождись завершения" authorizes waiting for that specific run. A later "do not wait" immediately revokes that authorization. Do not carry waiting permission into other runs or projects.
+- A status question authorizes one compact status check and a concise answer, not a monitoring or waiting loop. Perform already-authorized review when a completed report is actually available or on a new owner request; never wait for an unavailable report by default.
+- Leave agents and their operational supervisors/recovery/quota/cleanup guards running independently. A lightweight asynchronous completion notification is allowed; an idle LLM/controller waiting loop is not. Stopping a wait does not mean stopping the worker.
+- Preserve task, attempt, baseline and report pointers so later acceptance can resume without a duplicate worker. A launched worker or SUCCESS report is not proof of application completion or acceptance.
+
+This newer owner rule supersedes older instructions to "delegate and wait", "await the report", or keep a supervised turn alive until completion. Other safety, VPS-only, scope and acceptance rules remain in force.
+<!-- OWNER_NO_AGENT_WAIT_20261030:END -->
+
 # GLM/ZCode orchestration backend
 
 This backend runs headless GLM workers under tmux. It has no Claude runtime
